@@ -1,0 +1,26 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+    paths-ignore:
+      - '.github/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package And Release
+        uses: BigWigsMods/packager@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          cloudflare_token: ${{ secrets.CF_API_KEY }}
