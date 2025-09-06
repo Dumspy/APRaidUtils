@@ -1,0 +1,15 @@
+## Interface: 110200
+
+## Title: Average Pillagers Raid Utility
+## Version: 0.1
+## Author: Dispy
+## DefaultState: Enable
+## Dependencies: WeakAuras
+## X-Curse-Project-ID: 1342273
+
+libs\libs.xml
+
+main.lua
+versionChecker/main.lua
+versionChecker/client.lua
+versionChecker/server.lua
