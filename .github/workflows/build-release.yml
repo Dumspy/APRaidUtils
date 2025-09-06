@@ -23,4 +23,4 @@ jobs:
         uses: BigWigsMods/packager@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          cloudflare_token: ${{ secrets.CF_API_KEY }}
+          cf_api_key: ${{ secrets.CF_API_KEY }}
