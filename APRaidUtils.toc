@@ -1,7 +1,7 @@
 ## Interface: 110200
 
 ## Title: Average Pillagers Raid Utility
-## Version: 0.1
+## Version: @project-version@
 ## Author: Dispy
 ## DefaultState: Enable
 ## Dependencies: WeakAuras
