@@ -13,7 +13,6 @@ function VersionChecker:OnEnable()
 end
 
 function VersionChecker:RequestVersionCheck(waNames)
-    print("Requesting versions for WeakAuras:", table.concat(waNames, ", "))
     if self.ClearUIResults then self:ClearUIResults() end
     local channel
     if IsInRaid() then
