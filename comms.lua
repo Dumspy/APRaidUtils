@@ -30,7 +30,12 @@ function Comms:OnCommReceived(prefix, message, distribution, sender)
     if sender == UnitName("player") then return end
     local success, payload = self:Deserialize(message)
     if success and payload and payload.event and callbacks[payload.event] then
-        callbacks[payload.event](payload.event, sender, distribution, payload.data)
+        local data = payload.data
+        -- If data is a single-element array, unpack it for convenience
+        if type(data) == "table" and #data == 1 and type(data[1]) == "table" then
+            data = data[1]
+        end
+        callbacks[payload.event](payload.event, sender, distribution, data)
     end
 end
 

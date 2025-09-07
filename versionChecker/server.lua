@@ -16,8 +16,6 @@ function VersionChecker:OnEnable()
         end
         self:RequestVersionCheck(waNames)
     end)
-
-    self:Print("VersionChecker server module enabled. Use /apcheck [WeakAura1,WeakAura2,...] to request versions.")
 end
 
 -- Simple server: chat command to request version info from party/raid

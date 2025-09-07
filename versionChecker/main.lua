@@ -15,17 +15,4 @@ function VersionChecker:OnInitialize()
             end
         end
     end)
-
-    self:Print("VersionChecker module initialized!")
-    local waNames = {"Liquid - Manaforge Omega", "Liquid Anchors (don't rename these)", "LiquidWeakAuras"}
-    local versions = self:GetAllVersions(waNames)
-    for k, v in pairs(versions) do
-        if type(v) == "table" then
-            for waName, waVer in pairs(v) do
-                self:Print("WeakAura '", waName, "' version: ", waVer)
-            end
-        else
-            self:Print(k .. ": " .. tostring(v))
-        end
-    end
 end
