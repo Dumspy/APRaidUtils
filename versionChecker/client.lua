@@ -1,23 +1,14 @@
 -- BASED ON https://wago.io/exrYkN05u
 
 local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local Comms = AP:GetModule("Comms")
 local VersionChecker = AP:GetModule("VersionChecker")
 
--- Use shared AceComm prefix from main module
-local ACE_PREFIX = APVersionChecker_ACE_PREFIX
-
-function VersionChecker:OnCommReceived(prefix, message, distribution, sender)
-    if prefix == ACE_PREFIX then
-        local success, payload = self:Deserialize(message)
-        if success and type(payload) == "table" and payload.query == "QUERY_VERSION" then
-            local waNames = payload.waNames or {}
-            local versions = self:GetAllVersions(waNames)
-            local replyTable = { response = "VERSION_INFO", versions = versions }
-            local reply = self:Serialize(replyTable)
-            self:SendCommMessage(ACE_PREFIX, reply, "WHISPER", sender)
-        end
-    end
-end
+Comms:RegisterCallback("QUERY_VERSION", function(event, sender, distribution, data)
+    local waNames = data.waNames or {}
+    local versions = VersionChecker:GetAllVersions(waNames)
+    Comms:Whisper("VERSION_INFO", sender, {response = "VERSION_INFO", versions = versions})
+end)
 
 -- All version checker logic below
 

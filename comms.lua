@@ -16,6 +16,13 @@ function Comms:Broadcast(event, channel, ...)
     local args = {...}
     local payload = self:Serialize({event = event, data = args})
     self:SendCommMessage(COMM_PREFIX, payload, channel or "GUILD")
+
+end
+
+function Comms:Whisper(event, target, ...)
+    local args = {...}
+    local payload = self:Serialize({event = event, data = args})
+    self:SendCommMessage(COMM_PREFIX, payload, "WHISPER", target)
 end
 
 function Comms:OnCommReceived(prefix, message, distribution, sender)

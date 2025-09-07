@@ -1,4 +1,5 @@
 local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local Comms = AP:GetModule("Comms")
 local VersionChecker = AP:GetModule("VersionChecker")
 
 function VersionChecker:OnEnable()
@@ -15,14 +16,12 @@ function VersionChecker:OnEnable()
         end
         self:RequestVersionCheck(waNames)
     end)
-    self:RegisterComm(APVersionChecker_ACE_PREFIX)
+
+    self:Print("VersionChecker server module enabled. Use /apcheck [WeakAura1,WeakAura2,...] to request versions.")
 end
 
 -- Simple server: chat command to request version info from party/raid
 function VersionChecker:RequestVersionCheck(waNames)
-    local payload = { query = "QUERY_VERSION", waNames = waNames }
-    local msg = self:Serialize(payload)
-    local prefix = APVersionChecker_ACE_PREFIX
     local channel
     if IsInRaid() then
         channel = "RAID"
@@ -32,7 +31,7 @@ function VersionChecker:RequestVersionCheck(waNames)
         self:Print("Not in a group!")
         return
     end
-    self:SendCommMessage(prefix, msg, channel)
+    Comms:Broadcast("QUERY_VERSION", channel, {waNames = waNames})
     self:Print("Requested version info from " .. channel .. " members.")
 end
 
