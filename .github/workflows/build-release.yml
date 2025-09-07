@@ -13,6 +13,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.OAUTH_TOKEN }}
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -21,6 +25,3 @@ jobs:
 
       - name: Package And Release
         uses: BigWigsMods/packager@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          cf_api_key: ${{ secrets.CF_API_KEY }}
