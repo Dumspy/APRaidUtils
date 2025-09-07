@@ -14,3 +14,4 @@ comms.lua
 versionChecker/main.lua
 versionChecker/client.lua
 versionChecker/server.lua
+versionChecker/ui.lua

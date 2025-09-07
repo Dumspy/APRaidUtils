@@ -3,23 +3,18 @@ local Comms = AP:GetModule("Comms")
 local VersionChecker = AP:GetModule("VersionChecker")
 
 function VersionChecker:OnEnable()
-    self:RegisterChatCommand("apcheck", function(input)
-        local waNames = {}
-        for wa in string.gmatch(input or "", "[^,]+") do
-            wa = wa:match("^%s*(.-)%s*$") -- trim
-            if wa ~= "" then
-                table.insert(waNames, wa)
-            end
-        end
-        if #waNames == 0 then
-            waNames = {"Liquid - Manaforge Omega", "Liquid Anchors (don't rename these)", "LiquidWeakAuras"}
-        end
-        self:RequestVersionCheck(waNames)
+    Comms:RegisterCallback("VERSION_INFO", function(event, sender, distribution, data)
+        self:AppendUIResultRow(sender, data.versions or {})
+    end)
+
+    self:RegisterChatCommand("apvc", function()
+        if self.ShowUI then self:ShowUI() end
     end)
 end
 
--- Simple server: chat command to request version info from party/raid
 function VersionChecker:RequestVersionCheck(waNames)
+    print("Requesting versions for WeakAuras:", table.concat(waNames, ", "))
+    if self.ClearUIResults then self:ClearUIResults() end
     local channel
     if IsInRaid() then
         channel = "RAID"
@@ -33,21 +28,3 @@ function VersionChecker:RequestVersionCheck(waNames)
     self:Print("Requested version info from " .. channel .. " members.")
 end
 
-function VersionChecker:OnCommReceived(prefix, message, distribution, sender)
-    if prefix == APVersionChecker_ACE_PREFIX then
-        local AceSerializer = LibStub("AceSerializer-3.0")
-        local success, payload = AceSerializer:Deserialize(message)
-        if success and type(payload) == "table" and payload.response == "VERSION_INFO" then
-            self:Print("Version info from " .. sender .. ":")
-            for k, v in pairs(payload.versions or {}) do
-                if type(v) == "table" then
-                    for waName, waVer in pairs(v) do
-                        self:Print("  WeakAura '" .. waName .. "': " .. tostring(waVer))
-                    end
-                else
-                    self:Print("  " .. k .. ": " .. tostring(v))
-                end
-            end
-        end
-    end
-end
