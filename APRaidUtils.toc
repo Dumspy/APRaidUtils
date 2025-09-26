@@ -11,6 +11,7 @@ libs\libs.xml
 
 main.lua
 comms.lua
+imports.lua
 versionChecker/main.lua
 versionChecker/client.lua
 versionChecker/server.lua
