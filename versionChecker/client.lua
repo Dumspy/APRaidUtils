@@ -84,11 +84,11 @@ function VersionChecker:GetWeakAuraVersionByName(waName)
         return 0
     end
     local waURL = waData['url']
-    local versionStr = waURL:match('.*/(%d+)$')
+    local versionStr = waURL:match(".*/([%w]+)$")
     if not versionStr then
         return 0
     end
-    return tonumber(versionStr)
+    return versionStr
 end
 
 function VersionChecker:GetIgnoredRaiders()
