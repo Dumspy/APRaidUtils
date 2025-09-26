@@ -18,7 +18,6 @@ function APRaidUtils:OnInitialize()
 end
 
 function APRaidUtils:OnPlayerLogin()
-    self:Print("Player logged in")
     if IsInGuild() then
         local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
         Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
