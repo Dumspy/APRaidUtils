@@ -4,14 +4,12 @@
 ## Version: @project-version@
 ## Author: Dispy
 ## DefaultState: Enable
-## Dependencies: WeakAuras
 ## X-Curse-Project-ID: 1342273
 
 libs\libs.xml
 
 main.lua
 comms.lua
-imports.lua
 rosterManager.lua
 versionChecker/main.lua
 versionChecker/client.lua

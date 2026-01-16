@@ -5,8 +5,7 @@ local Comms = AP:GetModule("Comms")
 local VersionChecker = AP:GetModule("VersionChecker")
 
 Comms:RegisterCallback("QUERY_VERSION", function(event, sender, distribution, data)
-    local waNames = data.waNames or {}
-    local versions = VersionChecker:GetAllVersions(waNames)
+    local versions = VersionChecker:GetAllVersions()
     Comms:Whisper("VERSION_INFO", sender, {response = "VERSION_INFO", versions = versions})
 end)
 
@@ -24,12 +23,6 @@ local function StringHash(text)
     return math.fmod(counter, 4294967291)
 end
 
-function VersionChecker:GetWeakAurasVersion()
-    if WeakAuras then
-        return WeakAuras.versionString
-    end
-    return "0"
-end
 
 function VersionChecker:GetBigWigsVersion()
     if BigWigsAPI then
@@ -74,22 +67,6 @@ function VersionChecker:HashMRTNote()
     return "(No Addon)"
 end
 
-function VersionChecker:GetWeakAuraVersionByName(waName)
-    if not WeakAuras or not WeakAuras.GetData then return -1 end
-    local waData = WeakAuras.GetData(waName)
-    if not waData then
-        return -1
-    end
-    if not waData['url'] then
-        return 0
-    end
-    local waURL = waData['url']
-    local versionStr = waURL:match(".*/([%w]+)$")
-    if not versionStr then
-        return 0
-    end
-    return versionStr
-end
 
 function VersionChecker:GetIgnoredRaiders()
     local ignoredRaiders = {}
@@ -141,21 +118,14 @@ function VersionChecker:GetIgnoredRaiders()
     return implodedList
 end
 
-function VersionChecker:GetAllVersions(waNames)
+function VersionChecker:GetAllVersions()
     local versions = {
-        WeakAuras = self:GetWeakAurasVersion(),
         BigWigs = self:GetBigWigsVersion(),
         DBM = self:GetDBMVersion(),
         MRT = self:GetMRTVersion(),
         NS = self:GetNSVersion(),
         MRTNoteHash = self:HashMRTNote(),
         IgnoredRaiders = self:GetIgnoredRaiders(),
-        WeakAuraVersions = {}
     }
-    if waNames and type(waNames) == "table" then
-        for _, waName in ipairs(waNames) do
-            versions.WeakAuraVersions[waName] = self:GetWeakAuraVersionByName(waName)
-        end
-    end
     return versions
 end

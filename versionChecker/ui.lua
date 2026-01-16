@@ -7,12 +7,7 @@ local uiFrame
 
 
 function VersionChecker:GetLocalVersions()
-    local fixedColumns = {"BigWigs", "DBM", "MRT", "NS", "WeakAuras"}
-    local waPluginsList = {
-        "Liquid - Manaforge Omega",
-        "Liquid Anchors (don't rename these)",
-        "LiquidWeakAuras"
-    }
+    local fixedColumns = {"BigWigs", "DBM", "MRT", "NS"}
     local versions = {}
     for _, col in ipairs(fixedColumns) do
         if col == "BigWigs" then
@@ -23,19 +18,8 @@ function VersionChecker:GetLocalVersions()
             versions[col] = (MRT and MRT.version) or "-"
         elseif col == "NS" then
             versions[col] = (NS and NS.version) or "-"
-        elseif col == "WeakAuras" then
-            versions[col] = (WeakAuras and WeakAuras.version) or "-"
         end
     end
-    local waVersions = {}
-    for _, waName in ipairs(waPluginsList) do
-        if WeakAuras and WeakAuras[waName] and WeakAuras[waName].version then
-            waVersions[waName] = WeakAuras[waName].version
-        else
-            waVersions[waName] = "-"
-        end
-    end
-    versions.WeakAurasPlugins = waVersions
     return versions
 end
 
@@ -54,15 +38,6 @@ function VersionChecker:ShowUI()
     controlRow:SetLayout("Flow")
     controlRow:SetFullWidth(true)
 
-    -- Hardcoded WeakAura names
-    local waNamesList = {
-        "Liquid - Manaforge Omega",
-        "Liquid Anchors (don't rename these)",
-        "LiquidWeakAuras"
-    }
-    local fixedColumns = {"BigWigs", "DBM", "MRT", "NS", "WeakAuras"}
-    VersionChecker.uiRequestedWANames = waNamesList
-
     -- Button to check versions
     local checkBtn = AceGUI:Create("Button")
     checkBtn:SetText("Check Versions")
@@ -72,9 +47,9 @@ function VersionChecker:ShowUI()
         -- Update header
         local headerRow = VersionChecker.uiHeaderRow
         headerRow:ReleaseChildren()
+        local fixedColumns = {"BigWigs", "DBM", "MRT", "NS"}
         local widths = {120}
         for i = 1, #fixedColumns do widths[i+1] = 80 end
-        for i = 1, #waNamesList do widths[#fixedColumns+1+i] = 120 end
         local nameLbl = AceGUI:Create("Label")
         nameLbl:SetText("|cff00ff00Name|r")
         nameLbl:SetWidth(widths[1])
@@ -85,13 +60,7 @@ function VersionChecker:ShowUI()
             lbl:SetWidth(widths[i+1])
             headerRow:AddChild(lbl)
         end
-        for i, waName in ipairs(waNamesList) do
-            local lbl = AceGUI:Create("Label")
-            lbl:SetText("|cff00ff00" .. waName .. "|r")
-            lbl:SetWidth(widths[#fixedColumns+1+i])
-            headerRow:AddChild(lbl)
-        end
-        VersionChecker:RequestVersionCheck(waNamesList)
+        VersionChecker:RequestVersionCheck()
     end)
 
     controlRow:AddChild(checkBtn)
@@ -123,29 +92,18 @@ function VersionChecker:ClearUIResults()
         self.uiResultScroll:ReleaseChildren()
         -- Add our own version row first after clearing
         local myName = UnitName("player")
-        local waPluginsList = {
-            "Liquid - Manaforge Omega",
-            "Liquid Anchors (don't rename these)",
-            "LiquidWeakAuras"
-        }
-        local myVersions = (self.GetAllVersions and self:GetAllVersions(waPluginsList)) or {}
+        local myVersions = (self.GetAllVersions and self:GetAllVersions()) or {}
         self:AppendUIResultRow(myName, myVersions)
     end
 end
 
 function VersionChecker:AppendUIResultRow(name, versions)
-    local fixedColumns = {"BigWigs", "DBM", "MRT", "NS", "WeakAuras"}
-    local waPluginsList = {
-        "Liquid - Manaforge Omega",
-        "Liquid Anchors (don't rename these)",
-        "LiquidWeakAuras"
-    }
+    local fixedColumns = {"BigWigs", "DBM", "MRT", "NS"}
     local rowGroup = AceGUI:Create("SimpleGroup")
     rowGroup:SetLayout("Flow")
     rowGroup:SetFullWidth(true)
     local widths = {120}
     for i = 1, #fixedColumns do widths[i+1] = 80 end
-    for i = 1, #waPluginsList do widths[#fixedColumns+1+i] = 120 end
     -- Name column (always show self first)
     local displayName = name
     if name == UnitName("player") then
@@ -158,29 +116,9 @@ function VersionChecker:AppendUIResultRow(name, versions)
     -- Fixed columns
     for i, col in ipairs(fixedColumns) do
         local val = versions[col] or "-"
-        if col == "WeakAuras" and type(val) == "table" then
-            val = val.version or "-"
-        end
         local lbl = AceGUI:Create("Label")
         lbl:SetText(tostring(val))
         lbl:SetWidth(widths[i+1])
-        rowGroup:AddChild(lbl)
-    end
-    -- Dynamic WA plugin columns
-    local waVersions = {}
-    for k, v in pairs(versions) do
-        if type(v) == "table" then
-            for waName, waVer in pairs(v) do
-                waVersions[waName] = waVer
-            end
-        end
-    end
-    for i, waName in ipairs(waPluginsList) do
-        local val = waVersions[waName]
-        if val == nil then val = versions[waName] or "-" end
-        local lbl = AceGUI:Create("Label")
-        lbl:SetText(tostring(val))
-        lbl:SetWidth(widths[#fixedColumns+1+i])
         rowGroup:AddChild(lbl)
     end
     self.uiResultScroll:AddChild(rowGroup)
