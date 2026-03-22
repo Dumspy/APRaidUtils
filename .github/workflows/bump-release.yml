@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout Default Branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.repository.default_branch }}
@@ -104,7 +104,9 @@ jobs:
           git push origin "$NEXT_TAG"
 
       - name: Dispatch Build And Release Workflow
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -112,16 +114,21 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: "build-release.yml",
-              ref: "${{ steps.version.outputs.next_tag }}",
+              ref: process.env.NEXT_TAG,
             });
 
       - name: Write Summary
+        env:
+          RELEASE_TYPE: ${{ steps.version.outputs.release_type }}
+          CURRENT_TAG: ${{ steps.version.outputs.current_tag }}
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           {
             echo "## Release queued"
             echo ""
-            echo "- Release type: \\`${{ steps.version.outputs.release_type }}\\`"
-            echo "- Previous tag: \\`${{ steps.version.outputs.current_tag }}\\`"
-            echo "- New tag: \\`${{ steps.version.outputs.next_tag }}\\`"
-            echo "- Target branch: \\`${{ github.event.repository.default_branch }}\\`"
+            printf -- '- Release type: `%s`\n' "$RELEASE_TYPE"
+            printf -- '- Previous tag: `%s`\n' "$CURRENT_TAG"
+            printf -- '- New tag: `%s`\n' "$NEXT_TAG"
+            printf -- '- Target branch: `%s`\n' "$DEFAULT_BRANCH"
           } >> "$GITHUB_STEP_SUMMARY"
