@@ -1,11 +1,22 @@
 local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
 local RosterManager = AP:NewModule("RosterManager", "AceConsole-3.0")
-local AceGUI = LibStub("AceGUI-3.0")
 
-local rosterFrame
+function RosterManager:GetPreparedRoster(rosterString)
+    if not rosterString or strtrim(rosterString) == "" then
+        return nil, 0, "Error: No roster provided"
+    end
 
-function RosterManager:OnEnable()
-    self:RegisterChatCommand("aproster", "ShowUI")
+    local roster = self:ParseRoster(rosterString)
+    local rosterCount = 0
+    for _ in pairs(roster) do
+        rosterCount = rosterCount + 1
+    end
+
+    if rosterCount == 0 then
+        return nil, 0, "Error: Could not parse roster"
+    end
+
+    return roster, rosterCount
 end
 
 function RosterManager:ParseRoster(rosterString)
@@ -90,7 +101,7 @@ end
 
 function RosterManager:MoveExtras(roster)
     if not IsInRaid() or not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
-        return 0, 0, "You must be raid leader or assistant"
+        return 0, 0, "Error: You must be raid leader or assistant"
     end
     
     local movedOut = 0
@@ -115,11 +126,11 @@ function RosterManager:MoveExtras(roster)
 end
 
 function RosterManager:GetRosterPreview(rosterString)
-    if not rosterString or rosterString == "" then
-        return nil, "Error: No roster provided"
+    local roster, _, errorMessage = self:GetPreparedRoster(rosterString)
+    if not roster then
+        return nil, errorMessage
     end
-    
-    local roster = self:ParseRoster(rosterString)
+
     local currentMembers = self:GetCurrentRaidMembers()
     local alreadyInRaid = {}
     
@@ -150,207 +161,54 @@ function RosterManager:GetRosterPreview(rosterString)
 end
 
 function RosterManager:ProcessRoster(rosterString)
-    if not rosterString or rosterString == "" then
-        return "Error: No roster provided"
+    local roster, rosterCount, errorMessage = self:GetPreparedRoster(rosterString)
+    if not roster then
+        return errorMessage, false
     end
-    
-    local roster = self:ParseRoster(rosterString)
-    local rosterCount = 0
-    for _ in pairs(roster) do
-        rosterCount = rosterCount + 1
-    end
-    
-    if rosterCount == 0 then
-        return "Error: Could not parse roster"
-    end
-    
+
     local invited = self:InviteMissing(roster)
-    local movedOut, movedIn = self:MoveExtras(roster)
-    
-    local result = string.format("Processed %d roster members\nInvited: %d\nMoved to 7/8: %d\nMoved to 1-4: %d", 
+    local movedOut, movedIn, moveError = self:MoveExtras(roster)
+
+    if moveError then
+        local result = string.format("Processed %d roster members\nInvited: %d\n%s", rosterCount, invited, moveError)
+        return result, false, invited, movedOut, movedIn
+    end
+
+    local result = string.format("Processed %d roster members\nInvited: %d\nMoved to 7/8: %d\nMoved to 1-4: %d",
         rosterCount, invited, movedOut, movedIn)
-    
-    return result
+
+    return result, true, invited, movedOut, movedIn
+end
+
+function RosterManager:InviteOnly(rosterString)
+    local roster, _, errorMessage = self:GetPreparedRoster(rosterString)
+    if not roster then
+        return errorMessage, false, 0
+    end
+
+    local invited = self:InviteMissing(roster)
+    return string.format("Invited: %d players", invited), true, invited
+end
+
+function RosterManager:MoveOnly(rosterString)
+    local roster, _, errorMessage = self:GetPreparedRoster(rosterString)
+    if not roster then
+        return errorMessage, false, 0, 0
+    end
+
+    local movedOut, movedIn, moveError = self:MoveExtras(roster)
+    if moveError then
+        return moveError, false, movedOut, movedIn
+    end
+
+    return string.format("Moved to 7/8: %d | Moved to 1-4: %d", movedOut, movedIn), true, movedOut, movedIn
 end
 
 function RosterManager:ShowUI()
-    if rosterFrame then
-        rosterFrame:Release()
+    if AP.OpenMainWindow then
+        AP:OpenMainWindow("Roster")
+        return
     end
-    
-    rosterFrame = AceGUI:Create("Frame")
-    rosterFrame:SetTitle("APRaidUtils - Roster Manager")
-    rosterFrame:SetWidth(550)
-    rosterFrame:SetHeight(600)
-    rosterFrame:SetLayout("List")
-    
-    local instructionLabel = AceGUI:Create("Label")
-    instructionLabel:SetText("Paste your roster string (semicolon-separated Name-Realm format):")
-    instructionLabel:SetFullWidth(true)
-    rosterFrame:AddChild(instructionLabel)
-    
-    local rosterInput = AceGUI:Create("MultiLineEditBox")
-    rosterInput:SetLabel("")
-    rosterInput:SetFullWidth(true)
-    rosterInput:SetNumLines(8)
-    rosterInput:SetText("")
-    rosterFrame:AddChild(rosterInput)
-    
-    local statusLabel = AceGUI:Create("Label")
-    statusLabel:SetText("")
-    statusLabel:SetFullWidth(true)
-    statusLabel:SetColor(1, 1, 1)
-    rosterFrame:AddChild(statusLabel)
-    
-    local buttonGroup = AceGUI:Create("SimpleGroup")
-    buttonGroup:SetLayout("Flow")
-    buttonGroup:SetFullWidth(true)
-    rosterFrame:AddChild(buttonGroup)
-    
-    local previewBtn = AceGUI:Create("Button")
-    previewBtn:SetText("Preview")
-    previewBtn:SetWidth(100)
-    buttonGroup:AddChild(previewBtn)
-    
-    local processBtn = AceGUI:Create("Button")
-    processBtn:SetText("Process Roster")
-    processBtn:SetWidth(120)
-    buttonGroup:AddChild(processBtn)
-    
-    local inviteOnlyBtn = AceGUI:Create("Button")
-    inviteOnlyBtn:SetText("Invite Only")
-    inviteOnlyBtn:SetWidth(100)
-    buttonGroup:AddChild(inviteOnlyBtn)
-    
-    local moveOnlyBtn = AceGUI:Create("Button")
-    moveOnlyBtn:SetText("Move Extras")
-    moveOnlyBtn:SetWidth(100)
-    buttonGroup:AddChild(moveOnlyBtn)
-    
-    local previewScroll = AceGUI:Create("ScrollFrame")
-    previewScroll:SetFullWidth(true)
-    previewScroll:SetLayout("List")
-    previewScroll:SetHeight(200)
-    rosterFrame:AddChild(previewScroll)
-    
-    previewBtn:SetCallback("OnClick", function()
-        local rosterText = rosterInput:GetText()
-        local preview = self:GetRosterPreview(rosterText)
-        
-        previewScroll:ReleaseChildren()
-        
-        if not preview then
-            statusLabel:SetText("Error: No roster provided")
-            statusLabel:SetColor(1, 0, 0)
-            return
-        end
-        
-        local missingLabel = AceGUI:Create("Label")
-        missingLabel:SetText("|cffFFFF00Missing Players (Will Invite):|r")
-        missingLabel:SetFullWidth(true)
-        previewScroll:AddChild(missingLabel)
-        
-        if #preview.missing == 0 then
-            local noneLabel = AceGUI:Create("Label")
-            noneLabel:SetText("|cff00FF00  All roster members are in the raid|r")
-            noneLabel:SetFullWidth(true)
-            previewScroll:AddChild(noneLabel)
-        else
-            for _, player in ipairs(preview.missing) do
-                local playerLabel = AceGUI:Create("Label")
-                playerLabel:SetText("  • " .. player)
-                playerLabel:SetFullWidth(true)
-                previewScroll:AddChild(playerLabel)
-            end
-        end
-        
-        local spacer1 = AceGUI:Create("Label")
-        spacer1:SetText(" ")
-        spacer1:SetFullWidth(true)
-        previewScroll:AddChild(spacer1)
-        
-        local moveInLabel = AceGUI:Create("Label")
-        moveInLabel:SetText("|cffFFFF00Roster Members to Move Back (7/8 → 1-4):|r")
-        moveInLabel:SetFullWidth(true)
-        previewScroll:AddChild(moveInLabel)
-        
-        if #preview.toMoveIn == 0 then
-            local noneLabel = AceGUI:Create("Label")
-            noneLabel:SetText("|cff00FF00  All roster members in correct groups|r")
-            noneLabel:SetFullWidth(true)
-            previewScroll:AddChild(noneLabel)
-        else
-            for _, player in ipairs(preview.toMoveIn) do
-                local playerLabel = AceGUI:Create("Label")
-                playerLabel:SetText("  • " .. player)
-                playerLabel:SetFullWidth(true)
-                previewScroll:AddChild(playerLabel)
-            end
-        end
-        
-        local spacer2 = AceGUI:Create("Label")
-        spacer2:SetText(" ")
-        spacer2:SetFullWidth(true)
-        previewScroll:AddChild(spacer2)
-        
-        local moveOutLabel = AceGUI:Create("Label")
-        moveOutLabel:SetText("|cffFFFF00Non-Roster Members to Move Out (1-4 → 7/8):|r")
-        moveOutLabel:SetFullWidth(true)
-        previewScroll:AddChild(moveOutLabel)
-        
-        if #preview.toMoveOut == 0 then
-            local noneLabel = AceGUI:Create("Label")
-            noneLabel:SetText("|cff00FF00  No extra players to move|r")
-            noneLabel:SetFullWidth(true)
-            previewScroll:AddChild(noneLabel)
-        else
-            for _, player in ipairs(preview.toMoveOut) do
-                local playerLabel = AceGUI:Create("Label")
-                playerLabel:SetText("  • " .. player)
-                playerLabel:SetFullWidth(true)
-                previewScroll:AddChild(playerLabel)
-            end
-        end
-        
-        statusLabel:SetText(string.format("Preview: %d to invite, %d to move in, %d to move out", 
-            #preview.missing, #preview.toMoveIn, #preview.toMoveOut))
-        statusLabel:SetColor(0.8, 0.8, 1)
-    end)
-    
-    processBtn:SetCallback("OnClick", function()
-        local rosterText = rosterInput:GetText()
-        local result = self:ProcessRoster(rosterText)
-        statusLabel:SetText(result)
-        if string.find(result, "Error") then
-            statusLabel:SetColor(1, 0, 0)
-        else
-            statusLabel:SetColor(0, 1, 0)
-        end
-    end)
-    
-    inviteOnlyBtn:SetCallback("OnClick", function()
-        local rosterText = rosterInput:GetText()
-        if not rosterText or rosterText == "" then
-            statusLabel:SetText("Error: No roster provided")
-            statusLabel:SetColor(1, 0, 0)
-            return
-        end
-        local roster = self:ParseRoster(rosterText)
-        local invited = self:InviteMissing(roster)
-        statusLabel:SetText(string.format("Invited: %d players", invited))
-        statusLabel:SetColor(0, 1, 0)
-    end)
-    
-    moveOnlyBtn:SetCallback("OnClick", function()
-        local rosterText = rosterInput:GetText()
-        if not rosterText or rosterText == "" then
-            statusLabel:SetText("Error: No roster provided")
-            statusLabel:SetColor(1, 0, 0)
-            return
-        end
-        local roster = self:ParseRoster(rosterText)
-        local movedOut, movedIn = self:MoveExtras(roster)
-        statusLabel:SetText(string.format("Moved to 7/8: %d | Moved to 1-4: %d", movedOut, movedIn))
-        statusLabel:SetColor(0, 1, 0)
-    end)
+
+    self:Print("APRaidUtils UI is unavailable.")
 end

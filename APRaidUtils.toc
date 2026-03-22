@@ -13,6 +13,9 @@ libs\libs.xml
 main.lua
 comms.lua
 rosterManager.lua
+settings\registry.lua
+settings\renderers\ace.lua
+settings\renderers\df.lua
 settings.lua
 simcExport\main.lua
 simcExport\ui.lua
@@ -20,3 +23,4 @@ versionChecker/main.lua
 versionChecker/client.lua
 versionChecker/server.lua
 versionChecker/ui.lua
+ui/main.lua

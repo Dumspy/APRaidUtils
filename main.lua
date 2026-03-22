@@ -79,6 +79,7 @@ function APRaidUtils:OnInitialize()
     self:CleanupSimcData()
     Comms = self:GetModule("Comms")
     self:SetupOptions()
+    self:RegisterChatCommand("ap", "HandleChatCommand")
 
     self:Print("Loaded")
     self:RegisterEvent("PLAYER_LOGIN", "OnPlayerLogin")
@@ -393,6 +394,23 @@ function APRaidUtils:NotifyOptionsChanged()
     if registry then
         registry:NotifyChange("APRaidUtils")
     end
+
+    if self.RefreshSimcTab then
+        self:RefreshSimcTab()
+    end
+
+    if self.RefreshSettingsTab then
+        self:RefreshSettingsTab()
+    end
+end
+
+function APRaidUtils:HandleChatCommand()
+    if self.ToggleMainWindow then
+        self:ToggleMainWindow()
+        return
+    end
+
+    self:Print("APRaidUtils UI is unavailable.")
 end
 
 function IsVersionNewer(their, mine)

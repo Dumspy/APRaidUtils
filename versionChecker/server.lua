@@ -6,24 +6,30 @@ function VersionChecker:OnEnable()
     Comms:RegisterCallback("VERSION_INFO", function(event, sender, distribution, data)
         self:AppendUIResultRow(sender, data.versions or {})
     end)
-
-    self:RegisterChatCommand("apvc", function()
-        if self.ShowUI then self:ShowUI() end
-    end)
 end
 
 function VersionChecker:RequestVersionCheck(waNames)
     if self.ClearUIResults then self:ClearUIResults() end
+
     local channel
     if IsInRaid() then
         channel = "RAID"
     elseif IsInGroup() then
         channel = "PARTY"
     else
+        if self.SetVersionStatusText then
+            self:SetVersionStatusText("Not in a group.")
+        end
         self:Print("Not in a group!")
-        return
+        return false
     end
+
+    if self.SetVersionStatusText then
+        self:SetVersionStatusText("Requested version info from " .. channel .. " members. Waiting for replies...")
+    end
+
     Comms:Broadcast("QUERY_VERSION", channel, {waNames = waNames})
     self:Print("Requested version info from " .. channel .. " members.")
+    return true
 end
 

@@ -1,132 +1,103 @@
--- APRaidUtils VersionChecker UI
 local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
 local VersionChecker = AP:GetModule("VersionChecker")
-local AceGUI = LibStub("AceGUI-3.0")
 
-local uiFrame
-
-
-function VersionChecker:GetLocalVersions()
-    local fixedColumns = {"BigWigs", "DBM", "MRT", "NS"}
-    local versions = {}
-    for _, col in ipairs(fixedColumns) do
-        if col == "BigWigs" then
-            versions[col] = (BigWigs and BigWigs.GetVersion and BigWigs:GetVersion()) or "-"
-        elseif col == "DBM" then
-            versions[col] = (DBM and DBM.ReleaseRevision) or "-"
-        elseif col == "MRT" then
-            versions[col] = (MRT and MRT.version) or "-"
-        elseif col == "NS" then
-            versions[col] = (NS and NS.version) or "-"
-        end
-    end
-    return versions
+local function GetPlayerName()
+    return UnitName("player") or "Player"
 end
 
-function VersionChecker:ShowUI()
-    if uiFrame then
-        uiFrame:Release()
+local function CopyVersions(versions)
+    local copy = {}
+    for key, value in pairs(versions or {}) do
+        copy[key] = value
     end
-    uiFrame = AceGUI:Create("Frame")
-    uiFrame:SetTitle("APRaidUtils Version Checker")
-    uiFrame:SetWidth(600)
-    uiFrame:SetHeight(350)
-    uiFrame:SetLayout("List")
+    return copy
+end
 
-    -- Horizontal group for controls
-    local controlRow = AceGUI:Create("SimpleGroup")
-    controlRow:SetLayout("Flow")
-    controlRow:SetFullWidth(true)
+local function EnsureResultsState(self)
+    self.uiResults = self.uiResults or {}
+    self.uiResultsByName = self.uiResultsByName or {}
+end
 
-    -- Button to check versions
-    local checkBtn = AceGUI:Create("Button")
-    checkBtn:SetText("Check Versions")
-    checkBtn:SetWidth(200)
-    checkBtn:SetCallback("OnClick", function()
-        VersionChecker:ClearUIResults()
-        -- Update header
-        local headerRow = VersionChecker.uiHeaderRow
-        headerRow:ReleaseChildren()
-        local fixedColumns = {"BigWigs", "DBM", "MRT", "NS"}
-        local widths = {120}
-        for i = 1, #fixedColumns do widths[i+1] = 80 end
-        local nameLbl = AceGUI:Create("Label")
-        nameLbl:SetText("|cff00ff00Name|r")
-        nameLbl:SetWidth(widths[1])
-        headerRow:AddChild(nameLbl)
-        for i, col in ipairs(fixedColumns) do
-            local lbl = AceGUI:Create("Label")
-            lbl:SetText("|cff00ff00" .. col .. "|r")
-            lbl:SetWidth(widths[i+1])
-            headerRow:AddChild(lbl)
+function VersionChecker:GetVersionStatusText()
+    return self.uiStatusText or "Run a version check to populate the list."
+end
+
+function VersionChecker:SetVersionStatusText(text, suppressRefresh)
+    self.uiStatusText = text or ""
+    if not suppressRefresh then
+        self:RefreshUI()
+    end
+end
+
+function VersionChecker:GetVersionRows()
+    EnsureResultsState(self)
+
+    local rows = {}
+    for _, row in ipairs(self.uiResults) do
+        rows[#rows + 1] = row
+    end
+
+    local playerName = GetPlayerName()
+    table.sort(rows, function(left, right)
+        local leftIsPlayer = left.name == playerName
+        local rightIsPlayer = right.name == playerName
+        if leftIsPlayer ~= rightIsPlayer then
+            return leftIsPlayer
         end
-        VersionChecker:RequestVersionCheck()
+
+        return tostring(left.name):lower() < tostring(right.name):lower()
     end)
 
-    controlRow:AddChild(checkBtn)
-    uiFrame:AddChild(controlRow)
+    return rows
+end
 
-    -- Table header (use horizontal group for proper alignment)
-    local headerRow = AceGUI:Create("SimpleGroup")
-    headerRow:SetLayout("Flow")
-    headerRow:SetFullWidth(true)
-    VersionChecker.uiHeaderRow = headerRow -- for later update
-    uiFrame:AddChild(headerRow)
-
-    -- ScrollFrame for results
-    local scroll = AceGUI:Create("ScrollFrame")
-    scroll:SetFullWidth(true)
-    scroll:SetFullHeight(true)
-    scroll:SetLayout("List")
-    uiFrame:AddChild(scroll)
-
-    VersionChecker.uiResultScroll = scroll
-    VersionChecker.uiFrame = uiFrame
-
-    -- Add our own version row first using GetAllVersions from client
-    -- Moved to ClearUIResults to avoid replacing header on first open
+function VersionChecker:RefreshUI()
+    if AP.RefreshVersionsTab then
+        AP:RefreshVersionsTab()
+    end
 end
 
 function VersionChecker:ClearUIResults()
-    if self.uiResultScroll then
-        self.uiResultScroll:ReleaseChildren()
-        -- Add our own version row first after clearing
-        local myName = UnitName("player")
-        local myVersions = (self.GetAllVersions and self:GetAllVersions()) or {}
-        self:AppendUIResultRow(myName, myVersions)
-    end
+    EnsureResultsState(self)
+
+    wipe(self.uiResults)
+    wipe(self.uiResultsByName)
+
+    local playerName = GetPlayerName()
+    local playerRow = {
+        name = playerName,
+        versions = CopyVersions(self.GetAllVersions and self:GetAllVersions() or {}),
+    }
+
+    self.uiResults[1] = playerRow
+    self.uiResultsByName[playerName] = playerRow
+    self:RefreshUI()
 end
 
 function VersionChecker:AppendUIResultRow(name, versions)
-    local fixedColumns = {"BigWigs", "DBM", "MRT", "NS"}
-    local rowGroup = AceGUI:Create("SimpleGroup")
-    rowGroup:SetLayout("Flow")
-    rowGroup:SetFullWidth(true)
-    local widths = {120}
-    for i = 1, #fixedColumns do widths[i+1] = 80 end
-    -- Name column (always show self first)
-    local displayName = name
-    if name == UnitName("player") then
-        displayName = "|cff00ff00" .. name .. " (You)|r"
+    EnsureResultsState(self)
+
+    local rowName = tostring(name or "Unknown")
+    local row = self.uiResultsByName[rowName]
+    if row then
+        row.versions = CopyVersions(versions)
+    else
+        row = {
+            name = rowName,
+            versions = CopyVersions(versions),
+        }
+        self.uiResultsByName[rowName] = row
+        self.uiResults[#self.uiResults + 1] = row
     end
-    local nameLbl = AceGUI:Create("Label")
-    nameLbl:SetText(tostring(displayName))
-    nameLbl:SetWidth(widths[1])
-    rowGroup:AddChild(nameLbl)
-    -- Fixed columns
-    for i, col in ipairs(fixedColumns) do
-        local val = versions[col] or "-"
-        local lbl = AceGUI:Create("Label")
-        lbl:SetText(tostring(val))
-        lbl:SetWidth(widths[i+1])
-        rowGroup:AddChild(lbl)
-    end
-    self.uiResultScroll:AddChild(rowGroup)
+
+    self:RefreshUI()
 end
 
-function VersionChecker:AppendUIResult(msg)
-    if self.uiResultBox then
-        local prev = self.uiResultBox:GetText() or ""
-        self.uiResultBox:SetText(prev .. "\n" .. msg)
+function VersionChecker:ShowUI()
+    if AP.OpenMainWindow then
+        AP:OpenMainWindow("Versions")
+        return
     end
+
+    self:Print("APRaidUtils UI is unavailable.")
 end

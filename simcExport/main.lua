@@ -2,32 +2,10 @@ local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
 local SimcExport = AP:NewModule("SimcExport", "AceConsole-3.0", "AceEvent-3.0")
 
 function SimcExport:OnEnable()
-    self:RegisterChatCommand("apsimc", "HandleChatCommand")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "HandlePlayerEnteringWorld")
 
     AP:RegisterCurrentCharacter()
     AP:NotifyOptionsChanged()
-end
-
-function SimcExport:HandleChatCommand(input)
-    local command = strlower((input or ""):match("^(%S+)") or "")
-
-    if command == "" then
-        self:ShowUI()
-        return
-    end
-
-    if command == "settings" then
-        AP:OpenSettings()
-        return
-    end
-
-    if command == "capture" then
-        self:ManualCapture()
-        return
-    end
-
-    self:Print("Usage: /apsimc, /apsimc settings, /apsimc capture")
 end
 
 function SimcExport:GetSimulationcraftAddon()
