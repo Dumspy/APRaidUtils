@@ -1,0 +1,127 @@
+name: Bump Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Select which semver segment to bump
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: bump-release
+  cancel-in-progress: false
+
+jobs:
+  bump-and-dispatch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Default Branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Fetch Tags
+        run: git fetch --force --tags origin
+
+      - name: Calculate Next Tag
+        id: version
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+
+          latest_tag=""
+          while IFS= read -r candidate; do
+            if [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              latest_tag="$candidate"
+              break
+            fi
+          done < <(git tag --merged HEAD --sort=-v:refname)
+
+          if [[ -z "$latest_tag" ]]; then
+            major=0
+            minor=0
+            patch=0
+            current_tag="v0.0.0"
+          elif [[ "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+            current_tag="$latest_tag"
+          else
+            echo "Latest semver tag '$latest_tag' does not match vX.Y.Z"
+            exit 1
+          fi
+
+          case "$RELEASE_TYPE" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "Unsupported release type: $RELEASE_TYPE"
+              exit 1
+              ;;
+          esac
+
+          next_tag="v${major}.${minor}.${patch}"
+
+          if git rev-parse -q --verify "refs/tags/$next_tag" >/dev/null 2>&1; then
+            echo "Tag $next_tag already exists"
+            exit 1
+          fi
+
+          echo "current_tag=$current_tag" >> "$GITHUB_OUTPUT"
+          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
+          echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
+
+      - name: Create And Push Tag
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+          git tag "$NEXT_TAG"
+          git push origin "$NEXT_TAG"
+
+      - name: Dispatch Build And Release Workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "build-release.yml",
+              ref: "${{ steps.version.outputs.next_tag }}",
+            });
+
+      - name: Write Summary
+        run: |
+          {
+            echo "## Release queued"
+            echo ""
+            echo "- Release type: \\`${{ steps.version.outputs.release_type }}\\`"
+            echo "- Previous tag: \\`${{ steps.version.outputs.current_tag }}\\`"
+            echo "- New tag: \\`${{ steps.version.outputs.next_tag }}\\`"
+            echo "- Target branch: \\`${{ github.event.repository.default_branch }}\\`"
+          } >> "$GITHUB_STEP_SUMMARY"
