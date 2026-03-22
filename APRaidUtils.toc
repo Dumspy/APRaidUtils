@@ -3,7 +3,9 @@
 ## Title: Average Pillagers Raid Utility
 ## Version: @project-version@
 ## Author: Dispy
-## DefaultState: Enable
+## DefaultState: Enabled
+## OptionalDeps: Simulationcraft
+## SavedVariables: APRaidUtilsDB
 ## X-Curse-Project-ID: 1342273
 
 libs\libs.xml
@@ -11,6 +13,9 @@ libs\libs.xml
 main.lua
 comms.lua
 rosterManager.lua
+settings.lua
+simcExport\main.lua
+simcExport\ui.lua
 versionChecker/main.lua
 versionChecker/client.lua
 versionChecker/server.lua
