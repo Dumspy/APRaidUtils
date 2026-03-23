@@ -4,10 +4,40 @@ local AceDB = LibStub("AceDB-3.0")
 local Comms = nil
 
 local defaults = {
+    profile = {
+        reminders = {
+            enabled = true,
+            rules = {},
+            observedTimers = {},
+            display = {
+                point = "CENTER",
+                relativePoint = "CENTER",
+                x = 0,
+                y = 0,
+                spacing = 8,
+                textSize = 28,
+                maxVisible = 3,
+            },
+        },
+    },
     global = {
         simc = {
             characters = {},
             exports = {},
+        },
+        reminders = {
+            enabled = true,
+            rules = {},
+            observedTimers = {},
+            display = {
+                point = "CENTER",
+                relativePoint = "CENTER",
+                x = 0,
+                y = 0,
+                spacing = 8,
+                textSize = 28,
+                maxVisible = 3,
+            },
         },
     },
 }
@@ -401,6 +431,10 @@ function APRaidUtils:NotifyOptionsChanged()
 
     if self.RefreshSettingsTab then
         self:RefreshSettingsTab()
+    end
+
+    if self.RefreshRemindersTab then
+        self:RefreshRemindersTab()
     end
 end
 

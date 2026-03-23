@@ -17,13 +17,27 @@ local versionsResultsScrollBox
 local settingsTab
 local settingsTabRefreshBase
 local settingsCurrentCharacterLabel
+local remindersTab
+local remindersStatusLabel
+local remindersPlaceholderLabel
+local remindersObservedScrollBox
+local remindersRaidDropdown
+local remindersSelectedTimerKey
+local remindersDetailsLabel
+local remindersDetailsFrame
+local remindersRuleStatusLabel
+local remindersRuleTextBox
+local remindersTriggerSecondsTextBox
+local remindersShowBarCheckbox
+local remindersShowCountdownCheckbox
 
-local CONTENT_WIDTH = 700
+local CONTENT_WIDTH = 1020
 local BODY_TOP_OFFSET = -90
-local FULL_CONTENT_WIDTH = 836
+local FULL_CONTENT_WIDTH = 1156
 local ROSTER_INPUT_HEIGHT = 126
 local ROSTER_PREVIEW_ROW_HEIGHT = 20
 local VERSION_ROW_HEIGHT = 22
+local REMINDER_TIMER_ROW_HEIGHT = 22
 
 local versionColumns = {
     { key = "name", label = "Name", width = 240, align = "LEFT" },
@@ -33,10 +47,20 @@ local versionColumns = {
     { key = "NS", label = "NS", width = 149, align = "CENTER" },
 }
 
+local reminderColumns = {
+    { key = "bossName", label = "Boss", width = 220, align = "LEFT" },
+    { key = "label", label = "Timer", width = 320, align = "LEFT" },
+    { key = "spellText", label = "Spell", width = 95, align = "CENTER" },
+    { key = "lastSeenText", label = "Seen", width = 95, align = "CENTER" },
+}
+
+local remindersSelectedRaidFilter = "ALL"
+
 local tabList = {
     { name = "SimC", text = "SimC" },
     { name = "Roster", text = "Roster" },
     { name = "Versions", text = "Versions" },
+    { name = "Reminders", text = "Reminders" },
     { name = "Settings", text = "Settings" },
 }
 
@@ -510,6 +534,131 @@ local function RequestVersionCheckFromTab()
     AP:Print("Version checker is unavailable.")
 end
 
+local function SelectObservedReminderTimer(timerKey)
+    remindersSelectedTimerKey = timerKey
+    AP:RefreshRemindersTab()
+end
+
+local function SelectObservedReminderRaid(instanceName)
+    remindersSelectedRaidFilter = instanceName or "ALL"
+    remindersSelectedTimerKey = nil
+    AP:RefreshRemindersTab()
+end
+
+local function SetReminderRuleStatus(text, r, g, b)
+    if not remindersRuleStatusLabel then
+        return
+    end
+
+    remindersRuleStatusLabel:SetText(text or "")
+    remindersRuleStatusLabel:SetTextColor(r or 0.85, g or 0.85, b or 0.85, 1)
+end
+
+local function SaveReminderRuleFromUI()
+    local reminders = AP:GetModule("Reminders", true)
+    if not reminders then
+        return
+    end
+
+    local success, message = reminders:SaveRule(remindersSelectedTimerKey, {
+        text = remindersRuleTextBox and remindersRuleTextBox:GetText() or "",
+        secondsBeforeEnd = remindersTriggerSecondsTextBox and remindersTriggerSecondsTextBox:GetText() or "0",
+        showBar = remindersShowBarCheckbox and remindersShowBarCheckbox:GetChecked() or false,
+        showCountdown = remindersShowCountdownCheckbox and remindersShowCountdownCheckbox:GetChecked() or false,
+    })
+
+    SetReminderRuleStatus(message, success and 0.2 or 1, success and 1 or 0.2, success and 0.2 or 0.2)
+end
+
+local function DeleteReminderRuleFromUI()
+    local reminders = AP:GetModule("Reminders", true)
+    if not reminders then
+        return
+    end
+
+    local success, message = reminders:DeleteRule(remindersSelectedTimerKey)
+    SetReminderRuleStatus(message, success and 0.2 or 1, success and 1 or 0.2, success and 0.2 or 0.2)
+end
+
+local function CreateReminderObservedLine(self, index)
+    local line = CreateFrame("Button", "$parentLine" .. index, self, "BackdropTemplate")
+    line:SetPoint("TOPLEFT", self, "TOPLEFT", 1, -((index - 1) * REMINDER_TIMER_ROW_HEIGHT) - 1)
+    line:SetPoint("TOPRIGHT", self, "TOPRIGHT", -18, -((index - 1) * REMINDER_TIMER_ROW_HEIGHT) - 1)
+    line:SetHeight(REMINDER_TIMER_ROW_HEIGHT)
+    line:SetBackdrop({
+        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
+        tileSize = 64,
+        tile = true,
+    })
+
+    line.Columns = {}
+
+    local offset = 0
+    for _, column in ipairs(reminderColumns) do
+        line.Columns[column.key] = CreateVersionColumnText(line, column, offset)
+        offset = offset + column.width
+    end
+
+    return line
+end
+
+local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
+    for lineIndex = 1, totalLines do
+        local row = data[lineIndex + offset]
+        if row then
+            local line = scrollBox:GetLine(lineIndex)
+            if not line then
+                return
+            end
+            local isSection = row.kind == "section"
+            local isSelected = not isSection and row.timerKey == remindersSelectedTimerKey
+
+            if isSection then
+                line:SetBackdropColor(0.14, 0.12, 0.05, 0.5)
+                line:SetScript("OnClick", nil)
+            else
+                line:SetBackdropColor(isSelected and 0.12 or 0.08, isSelected and 0.16 or 0.08, isSelected and 0.1 or 0.1, isSelected and 0.55 or 0.35)
+                line:SetScript("OnClick", function()
+                    SelectObservedReminderTimer(row.timerKey)
+                end)
+            end
+
+            for _, column in ipairs(reminderColumns) do
+                local value = row[column.key] or ""
+                if not isSection and column.key == "label" then
+                    local displayLabel = tostring(value)
+                    if row.spellName and row.spellName ~= "" and row.spellName ~= displayLabel then
+                        displayLabel = string.format("  %s - %s", displayLabel, row.spellName)
+                    else
+                        displayLabel = "  " .. displayLabel
+                    end
+                    value = displayLabel
+                end
+
+                line.Columns[column.key]:SetText(tostring(value))
+                if isSection then
+                    if column.key == "bossName" or column.key == "label" then
+                        line.Columns[column.key]:SetTextColor(1, 0.82, 0, 1)
+                        line.Columns[column.key]:SetFontObject(column.key == "bossName" and "GameFontNormalSmall" or "GameFontHighlightSmall")
+                    else
+                        line.Columns[column.key]:SetTextColor(1, 1, 1, 0)
+                        line.Columns[column.key]:SetFontObject("GameFontHighlightSmall")
+                    end
+                elseif column.key == "bossName" then
+                    line.Columns[column.key]:SetTextColor(0.72, 0.72, 0.78, 1)
+                    line.Columns[column.key]:SetFontObject("GameFontHighlightSmall")
+                elseif column.key == "label" then
+                    line.Columns[column.key]:SetTextColor(isSelected and 0 or 1, isSelected and 1 or 1, isSelected and 0 or 1, 1)
+                    line.Columns[column.key]:SetFontObject("GameFontHighlightSmall")
+                else
+                    line.Columns[column.key]:SetTextColor(1, 1, 1, 1)
+                    line.Columns[column.key]:SetFontObject("GameFontHighlightSmall")
+                end
+            end
+        end
+    end
+end
+
 local function BuildSimCTab(framework, parent)
     simcTab = parent
 
@@ -677,6 +826,254 @@ local function BuildSettingsTab(framework, parent)
     parent:RefreshOptions()
 end
 
+local function BuildRemindersTab(framework, parent)
+    remindersTab = parent
+
+    local anchor = CreateBodyAnchor(parent)
+    local titleLabel = CreateSectionLabel(parent, anchor, "BigWigs Reminders")
+
+    remindersStatusLabel = CreateWrappedText(parent, "", titleLabel, -10, FULL_CONTENT_WIDTH, 0.8, 0.8, 1)
+    remindersPlaceholderLabel = CreateWrappedText(parent, "", remindersStatusLabel, -10, FULL_CONTENT_WIDTH, 1, 0.82, 0)
+
+    local contentAnchor = CreateFrame("Frame", "$parentRemindersContentAnchor", parent)
+    contentAnchor:SetPoint("TOPLEFT", remindersPlaceholderLabel, "BOTTOMLEFT", 0, -18)
+    contentAnchor:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, 0)
+    contentAnchor:SetHeight(1)
+
+    local observedPanel = CreateFrame("Frame", "$parentObservedPanel", parent, "BackdropTemplate")
+    observedPanel:SetPoint("TOPLEFT", contentAnchor, "TOPLEFT", 0, 0)
+    observedPanel:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 20, 20)
+    observedPanel:SetWidth(760)
+    observedPanel:SetBackdrop({
+        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
+        edgeFile = [[Interface\Buttons\WHITE8X8]],
+        edgeSize = 1,
+        tile = true,
+        tileSize = 64,
+    })
+    observedPanel:SetBackdropColor(0.08, 0.08, 0.1, 0.35)
+    observedPanel:SetBackdropBorderColor(0.2, 0.2, 0.24, 0.9)
+
+    local observedHeader = observedPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    observedHeader:SetPoint("TOPLEFT", observedPanel, "TOPLEFT", 10, -10)
+    observedHeader:SetText("Observed Timers")
+    observedHeader:SetTextColor(1, 0.82, 0, 1)
+
+    local observedSubtitle = observedPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    observedSubtitle:SetPoint("TOPLEFT", observedHeader, "BOTTOMLEFT", 0, -4)
+    observedSubtitle:SetPoint("TOPRIGHT", observedPanel, "TOPRIGHT", -12, -14)
+    observedSubtitle:SetJustifyH("LEFT")
+    observedSubtitle:SetText("Filter by raid, then pick a boss timer to attach a reminder.")
+    observedSubtitle:SetTextColor(0.72, 0.72, 0.78, 1)
+
+    remindersRaidDropdown = framework:CreateDropDown(
+        observedPanel,
+        function()
+            local reminders = AP:GetModule("Reminders", true)
+            local options = {}
+            if not reminders or not reminders.GetObservedRaidFilterItems then
+                return options
+            end
+
+            for _, item in ipairs(reminders:GetObservedRaidFilterItems()) do
+                options[#options + 1] = {
+                    value = item.value,
+                    label = item.label,
+                    onclick = function()
+                        SelectObservedReminderRaid(item.value)
+                    end,
+                }
+            end
+
+            return options
+        end,
+        remindersSelectedRaidFilter,
+        300,
+        20,
+        nil,
+        "$parentRemindersRaidDropdown",
+        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
+    )
+    remindersRaidDropdown:SetPoint("TOPLEFT", observedSubtitle, "BOTTOMLEFT", 0, -10)
+    remindersRaidDropdown:SetEmptyTextAndIcon("No observed raids", [[Interface\MINIMAP\TRACKING\Target]])
+
+    remindersDetailsFrame = CreateFrame("Frame", "$parentReminderEditorPanel", parent, "BackdropTemplate")
+    remindersDetailsFrame:SetPoint("TOPLEFT", observedPanel, "TOPRIGHT", 16, 0)
+    remindersDetailsFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 20)
+    remindersDetailsFrame:SetBackdrop({
+        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
+        edgeFile = [[Interface\Buttons\WHITE8X8]],
+        edgeSize = 1,
+        tile = true,
+        tileSize = 64,
+    })
+    remindersDetailsFrame:SetBackdropColor(0.08, 0.08, 0.1, 0.35)
+    remindersDetailsFrame:SetBackdropBorderColor(0.2, 0.2, 0.24, 0.9)
+
+    local editorHeader = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    editorHeader:SetPoint("TOPLEFT", remindersDetailsFrame, "TOPLEFT", 10, -10)
+    editorHeader:SetText("Reminder Editor")
+    editorHeader:SetTextColor(1, 0.82, 0, 1)
+
+    local headerFrame = CreateFrame("Frame", nil, observedPanel)
+    headerFrame:SetPoint("TOPLEFT", remindersRaidDropdown.widget, "BOTTOMLEFT", -2, -12)
+    headerFrame:SetPoint("TOPRIGHT", observedPanel, "TOPRIGHT", -8, -8)
+    headerFrame:SetHeight(18)
+
+    local offset = 0
+    for _, column in ipairs(reminderColumns) do
+        local headerText = CreateVersionColumnText(headerFrame, column, offset, "GameFontNormalSmall", 0, 1, 0)
+        headerText:SetText(column.label)
+        offset = offset + column.width
+    end
+
+    remindersObservedScrollBox = framework:CreateScrollBox(
+        observedPanel,
+        "$parentRemindersObservedScrollBox",
+        RefreshReminderObservedLines,
+        {},
+        1,
+        1,
+        1,
+        REMINDER_TIMER_ROW_HEIGHT,
+        CreateReminderObservedLine,
+        true
+    )
+    remindersObservedScrollBox:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -6)
+    remindersObservedScrollBox:SetPoint("BOTTOMRIGHT", observedPanel, "BOTTOMRIGHT", -8, 8)
+    framework:ReskinSlider(remindersObservedScrollBox)
+    if remindersObservedScrollBox.ScrollBar then
+        remindersObservedScrollBox.ScrollBar:ClearAllPoints()
+        remindersObservedScrollBox.ScrollBar:SetPoint("TOPRIGHT", remindersObservedScrollBox, "TOPRIGHT", -4, -8)
+        remindersObservedScrollBox.ScrollBar:SetPoint("BOTTOMRIGHT", remindersObservedScrollBox, "BOTTOMRIGHT", -4, 8)
+    end
+    remindersObservedScrollBox:OnSizeChanged()
+
+    remindersDetailsLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersDetailsLabel:SetPoint("TOPLEFT", editorHeader, "BOTTOMLEFT", 0, -10)
+    remindersDetailsLabel:SetJustifyH("LEFT")
+    remindersDetailsLabel:SetJustifyV("TOP")
+    remindersDetailsLabel:SetTextColor(0.85, 0.85, 0.85, 1)
+    remindersDetailsLabel:SetWidth(340)
+
+    local reminderTextLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    reminderTextLabel:SetPoint("TOPLEFT", remindersDetailsLabel, "BOTTOMLEFT", 0, -18)
+    reminderTextLabel:SetText("Reminder Text")
+    reminderTextLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersRuleTextBox = framework:CreateTextEntry(
+        remindersDetailsFrame,
+        function() end,
+        340,
+        28,
+        nil,
+        "APRaidUtilsReminderRuleTextBox",
+        nil,
+        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
+    )
+    remindersRuleTextBox:SetPoint("TOPLEFT", reminderTextLabel, "BOTTOMLEFT", 0, -8)
+    remindersRuleTextBox:SetAutoFocus(false)
+    remindersRuleTextBox:SetText("")
+
+    local reminderHelpLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    reminderHelpLabel:SetPoint("TOPLEFT", remindersRuleTextBox.widget, "BOTTOMLEFT", -6, -6)
+    reminderHelpLabel:SetText("Placeholders: {countdown}, {spell}, {boss}")
+    reminderHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
+
+    local triggerLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    triggerLabel:SetPoint("TOPLEFT", reminderHelpLabel, "BOTTOMLEFT", 0, -14)
+    triggerLabel:SetText("Trigger")
+    triggerLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local triggerHelpLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    triggerHelpLabel:SetPoint("TOPLEFT", triggerLabel, "BOTTOMLEFT", 0, -4)
+    triggerHelpLabel:SetText("Show reminder when this many seconds remain (0 = on timer start)")
+    triggerHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
+
+    remindersTriggerSecondsTextBox = framework:CreateTextEntry(
+        remindersDetailsFrame,
+        function() end,
+        80,
+        28,
+        nil,
+        "APRaidUtilsReminderTriggerSecondsTextBox",
+        nil,
+        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
+    )
+    remindersTriggerSecondsTextBox:SetPoint("TOPLEFT", triggerHelpLabel, "BOTTOMLEFT", 0, -8)
+    remindersTriggerSecondsTextBox:SetAutoFocus(false)
+    remindersTriggerSecondsTextBox:SetText("0")
+
+    local triggerSecondsSuffix = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    triggerSecondsSuffix:SetPoint("LEFT", remindersTriggerSecondsTextBox.widget, "RIGHT", 8, 0)
+    triggerSecondsSuffix:SetText("seconds remaining")
+    triggerSecondsSuffix:SetTextColor(0.85, 0.85, 0.85, 1)
+
+    local outputsLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    outputsLabel:SetPoint("TOPLEFT", remindersTriggerSecondsTextBox.widget, "BOTTOMLEFT", 0, -16)
+    outputsLabel:SetText("Outputs")
+    outputsLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersShowBarCheckbox, _ = framework:CreateSwitch(
+        remindersDetailsFrame,
+        nil,
+        false,
+        20,
+        20,
+        nil,
+        nil,
+        nil,
+        "$parentShowBarCheckbox"
+    )
+    remindersShowBarCheckbox:SetAsCheckBox()
+    remindersShowBarCheckbox:SetPoint("TOPLEFT", outputsLabel, "BOTTOMLEFT", 0, -8)
+    remindersShowBarCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+    local remindersShowBarLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersShowBarLabel:SetPoint("LEFT", remindersShowBarCheckbox.widget, "RIGHT", 6, 0)
+    remindersShowBarLabel:SetText("Show custom bar")
+    remindersShowBarCheckbox:CreateExtraSpaceToClick(remindersShowBarLabel, 140)
+
+    remindersShowCountdownCheckbox, _ = framework:CreateSwitch(
+        remindersDetailsFrame,
+        nil,
+        false,
+        20,
+        20,
+        nil,
+        nil,
+        nil,
+        "$parentShowCountdownCheckbox"
+    )
+    remindersShowCountdownCheckbox:SetAsCheckBox()
+    remindersShowCountdownCheckbox:SetPoint("TOPLEFT", remindersShowBarCheckbox, "BOTTOMLEFT", 0, -8)
+    remindersShowCountdownCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+    local remindersShowCountdownLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersShowCountdownLabel:SetPoint("LEFT", remindersShowCountdownCheckbox.widget, "RIGHT", 6, 0)
+    remindersShowCountdownLabel:SetText("Show countdown")
+    remindersShowCountdownCheckbox:CreateExtraSpaceToClick(remindersShowCountdownLabel, 140)
+
+    local saveButton = framework:CreateButton(remindersDetailsFrame, SaveReminderRuleFromUI, 120, 22, "Save Reminder")
+    saveButton:SetPoint("TOPLEFT", remindersShowCountdownCheckbox, "BOTTOMLEFT", 0, -18)
+    saveButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    local deleteButton = framework:CreateButton(remindersDetailsFrame, DeleteReminderRuleFromUI, 120, 22, "Delete Reminder")
+    deleteButton:SetPoint("LEFT", saveButton.widget, "RIGHT", 10, 0)
+    deleteButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    remindersRuleStatusLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersRuleStatusLabel:SetPoint("TOPLEFT", saveButton.widget, "BOTTOMLEFT", 0, -10)
+    remindersRuleStatusLabel:SetWidth(340)
+    remindersRuleStatusLabel:SetJustifyH("LEFT")
+    remindersRuleStatusLabel:SetJustifyV("TOP")
+    remindersRuleStatusLabel:SetTextColor(0.85, 0.85, 0.85, 1)
+
+    parent.RefreshOptions = function()
+        AP:RefreshRemindersTab()
+    end
+
+    parent:RefreshOptions()
+end
+
 local function BuildMainWindow()
     local framework = GetFramework()
     if not framework then
@@ -688,7 +1085,7 @@ local function BuildMainWindow()
         return mainWindow
     end
 
-    mainWindow = framework:CreateSimplePanel(UIParent, 900, 620, "APRaidUtils", "APRaidUtilsMainWindow", {
+    mainWindow = framework:CreateSimplePanel(UIParent, 1220, 700, "APRaidUtils", "APRaidUtilsMainWindow", {
         UseStatusBar = true,
         DontRightClickClose = true,
     })
@@ -696,8 +1093,8 @@ local function BuildMainWindow()
     mainWindow:SetFrameStrata("HIGH")
 
     mainTabs = framework:CreateTabContainer(mainWindow, "APRaidUtils", "APRaidUtilsMainTabs", tabList, {
-        width = 876,
-        height = 580,
+        width = 1196,
+        height = 660,
         backdrop_color = { 0.06, 0.06, 0.08, 0.94 },
         backdrop_border_color = { 0.2, 0.2, 0.24, 0.9 },
         hide_click_label = true,
@@ -712,6 +1109,7 @@ local function BuildMainWindow()
     BuildSimCTab(framework, mainTabs:GetTabFrameByName("SimC"))
     BuildRosterTab(framework, mainTabs:GetTabFrameByName("Roster"))
     BuildVersionsTab(framework, mainTabs:GetTabFrameByName("Versions"))
+    BuildRemindersTab(framework, mainTabs:GetTabFrameByName("Reminders"))
     BuildSettingsTab(framework, mainTabs:GetTabFrameByName("Settings"))
 
     if mainTabs.SelectTabByName then
@@ -778,6 +1176,97 @@ function AP:RefreshVersionsTab()
         versionsResultsScrollBox:SetData(versionChecker:GetVersionRows())
         versionsResultsScrollBox:Refresh()
     end
+end
+
+function AP:RefreshRemindersTab()
+    if not remindersTab then
+        return
+    end
+
+    local reminders = self:GetModule("Reminders", true)
+    if not reminders then
+        return
+    end
+
+    if remindersStatusLabel and reminders.GetStatusText then
+        UpdateWrappedLabel(remindersStatusLabel, reminders:GetStatusText(), FULL_CONTENT_WIDTH)
+    end
+
+    if remindersPlaceholderLabel and reminders.GetPlaceholderLines then
+        UpdateWrappedLabel(remindersPlaceholderLabel, table.concat(reminders:GetPlaceholderLines(), "\n"), FULL_CONTENT_WIDTH)
+    end
+
+    if remindersRaidDropdown and reminders.GetObservedRaidFilterItems then
+        remindersRaidDropdown:Refresh()
+        remindersRaidDropdown:Select(remindersSelectedRaidFilter, false, false, false)
+    end
+
+    if remindersObservedScrollBox and reminders.GetObservedTimerDisplayRowsForRaid then
+        local rows = reminders:GetObservedTimerDisplayRowsForRaid(remindersSelectedRaidFilter)
+        remindersObservedScrollBox:SetData(rows)
+        remindersObservedScrollBox:Refresh()
+
+        if remindersSelectedTimerKey then
+            local stillExists = false
+            for _, row in ipairs(rows) do
+                if row.timerKey == remindersSelectedTimerKey then
+                    stillExists = true
+                    break
+                end
+            end
+            if not stillExists then
+                remindersSelectedTimerKey = nil
+            end
+        end
+
+        if not remindersSelectedTimerKey and rows[1] then
+            for _, row in ipairs(rows) do
+                if row.kind ~= "section" and row.timerKey then
+                    remindersSelectedTimerKey = row.timerKey
+                    break
+                end
+            end
+        end
+    end
+
+    if remindersDetailsLabel and reminders.GetObservedTimerDetailLines then
+        UpdateWrappedLabel(remindersDetailsLabel, table.concat(reminders:GetObservedTimerDetailLines(remindersSelectedTimerKey), "\n"), FULL_CONTENT_WIDTH)
+    end
+
+    if reminders.GetRuleEditorState then
+        local editorState = reminders:GetRuleEditorState(remindersSelectedTimerKey)
+
+        if remindersRuleTextBox then
+            remindersRuleTextBox:SetText(editorState.text or "")
+            if editorState.hasTimer then
+                remindersRuleTextBox:Enable()
+            else
+                remindersRuleTextBox:Disable()
+            end
+        end
+
+        if remindersTriggerSecondsTextBox then
+            remindersTriggerSecondsTextBox:SetText(editorState.secondsBeforeEnd or "0")
+            if editorState.hasTimer then
+                remindersTriggerSecondsTextBox:Enable()
+            else
+                remindersTriggerSecondsTextBox:Disable()
+            end
+        end
+
+        if remindersShowBarCheckbox then
+            remindersShowBarCheckbox:SetChecked(editorState.showBar == true)
+            remindersShowBarCheckbox:SetEnabled(editorState.hasTimer == true)
+        end
+
+        if remindersShowCountdownCheckbox then
+            remindersShowCountdownCheckbox:SetChecked(editorState.showCountdown == true)
+            remindersShowCountdownCheckbox:SetEnabled(editorState.hasTimer == true)
+        end
+
+        SetReminderRuleStatus(editorState.statusText, 0.85, 0.85, 0.85)
+    end
+
 end
 
 function AP:RefreshSimcTab()

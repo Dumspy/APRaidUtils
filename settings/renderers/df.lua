@@ -44,6 +44,12 @@ local function WrapToggleSetter(item)
     end
 end
 
+local function WrapValueSetter(item)
+    return function(_, _, value)
+        item.set(value)
+    end
+end
+
 local function BuildMenuItems(framework, items, menuItems)
     for index, item in ipairs(SortItems(items)) do
         if IsSurfaceEnabled(item, "df") then
@@ -88,6 +94,32 @@ local function BuildMenuItems(framework, items, menuItems)
                     disableif = item.disabled,
                     get = item.get,
                     set = WrapToggleSetter(item),
+                }
+            elseif item.type == "range" then
+                menuItems[#menuItems + 1] = {
+                    type = "range",
+                    name = ResolveValue(item.name),
+                    desc = ResolveValue(item.desc),
+                    order = item.order or index,
+                    width = item.df and item.df.width or 180,
+                    min = item.min or 0,
+                    max = item.max or 100,
+                    step = item.step or 1,
+                    usedecimals = item.df and item.df.usedecimals,
+                    disableif = item.disabled,
+                    get = item.get,
+                    set = WrapValueSetter(item),
+                }
+            elseif item.type == "input" then
+                menuItems[#menuItems + 1] = {
+                    type = "textentry",
+                    name = ResolveValue(item.name),
+                    desc = ResolveValue(item.desc),
+                    order = item.order or index,
+                    width = item.df and item.df.width or 140,
+                    disableif = item.disabled,
+                    get = item.get,
+                    set = WrapValueSetter(item),
                 }
             end
         end

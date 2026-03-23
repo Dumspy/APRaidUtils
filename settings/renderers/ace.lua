@@ -83,6 +83,39 @@ local function BuildArgs(items)
                         item.set(value)
                     end,
                 }
+            elseif item.type == "range" then
+                args[key] = {
+                    type = "range",
+                    name = ResolveValue(item.name),
+                    desc = ResolveValue(item.desc),
+                    width = item.ace and item.ace.width,
+                    min = item.min or 0,
+                    max = item.max or 100,
+                    step = item.step or 1,
+                    order = item.order or index,
+                    disabled = item.disabled,
+                    get = function()
+                        return item.get()
+                    end,
+                    set = function(_, value)
+                        item.set(value)
+                    end,
+                }
+            elseif item.type == "input" then
+                args[key] = {
+                    type = "input",
+                    name = ResolveValue(item.name),
+                    desc = ResolveValue(item.desc),
+                    width = item.ace and item.ace.width,
+                    order = item.order or index,
+                    disabled = item.disabled,
+                    get = function()
+                        return tostring(item.get() or "")
+                    end,
+                    set = function(_, value)
+                        item.set(value)
+                    end,
+                }
             end
         end
     end

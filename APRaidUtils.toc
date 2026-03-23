@@ -19,6 +19,9 @@ settings\renderers\df.lua
 settings.lua
 simcExport\main.lua
 simcExport\ui.lua
+reminders\main.lua
+reminders\display.lua
+reminders\ui.lua
 versionChecker/main.lua
 versionChecker/client.lua
 versionChecker/server.lua
