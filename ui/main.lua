@@ -22,12 +22,17 @@ local remindersStatusLabel
 local remindersPlaceholderLabel
 local remindersObservedScrollBox
 local remindersRaidDropdown
+local remindersBossDropdown
+local remindersTimerSearchTextBox
+local remindersTimerSearchClearButton
+local remindersCurrentExpansionCheckbox
 local remindersSelectedTimerKey
 local remindersDetailsLabel
 local remindersDetailsFrame
 local remindersRuleStatusLabel
 local remindersRuleTextBox
 local remindersTriggerSecondsTextBox
+local remindersOccurrenceTextBox
 local remindersShowBarCheckbox
 local remindersShowCountdownCheckbox
 
@@ -48,13 +53,17 @@ local versionColumns = {
 }
 
 local reminderColumns = {
-    { key = "bossName", label = "Boss", width = 220, align = "LEFT" },
-    { key = "label", label = "Timer", width = 320, align = "LEFT" },
-    { key = "spellText", label = "Spell", width = 95, align = "CENTER" },
-    { key = "lastSeenText", label = "Seen", width = 95, align = "CENTER" },
+    { key = "bossName", label = "Boss", width = 180, align = "LEFT" },
+    { key = "label", label = "Ability", width = 260, align = "LEFT" },
+    { key = "spellName", label = "Easy", width = 130, align = "LEFT" },
+    { key = "spellText", label = "Key", width = 85, align = "CENTER" },
+    { key = "lastSeenText", label = "State", width = 65, align = "CENTER" },
 }
 
 local remindersSelectedRaidFilter = "ALL"
+local remindersSelectedBossFilter = "ALL"
+local remindersTimerSearchText = ""
+local remindersOnlyCurrentExpansion = true
 
 local tabList = {
     { name = "SimC", text = "SimC" },
@@ -541,7 +550,44 @@ end
 
 local function SelectObservedReminderRaid(instanceName)
     remindersSelectedRaidFilter = instanceName or "ALL"
+    remindersSelectedBossFilter = "ALL"
+    remindersTimerSearchText = ""
     remindersSelectedTimerKey = nil
+    local reminders = AP:GetModule("Reminders", true)
+    if reminders and reminders.PrimeReminderData then
+        reminders:PrimeReminderData(remindersSelectedRaidFilter)
+    end
+    AP:RefreshRemindersTab()
+end
+
+local function SelectObservedReminderBoss(bossKey)
+    remindersSelectedBossFilter = bossKey or "ALL"
+    remindersTimerSearchText = ""
+    remindersSelectedTimerKey = nil
+    AP:RefreshRemindersTab()
+end
+
+local function SetRemindersCurrentExpansionOnly(_, _, value)
+    remindersOnlyCurrentExpansion = value == true
+    remindersSelectedRaidFilter = "ALL"
+    remindersSelectedBossFilter = "ALL"
+    remindersTimerSearchText = ""
+    remindersSelectedTimerKey = nil
+    AP:RefreshRemindersTab()
+end
+
+local function UpdateReminderSearchFromUI()
+    remindersTimerSearchText = remindersTimerSearchTextBox and remindersTimerSearchTextBox:GetText() or ""
+    remindersSelectedTimerKey = nil
+    AP:RefreshRemindersTab()
+end
+
+local function ClearReminderSearchFromUI()
+    remindersTimerSearchText = ""
+    remindersSelectedTimerKey = nil
+    if remindersTimerSearchTextBox then
+        remindersTimerSearchTextBox:SetText("")
+    end
     AP:RefreshRemindersTab()
 end
 
@@ -563,6 +609,7 @@ local function SaveReminderRuleFromUI()
     local success, message = reminders:SaveRule(remindersSelectedTimerKey, {
         text = remindersRuleTextBox and remindersRuleTextBox:GetText() or "",
         secondsBeforeEnd = remindersTriggerSecondsTextBox and remindersTriggerSecondsTextBox:GetText() or "0",
+        occurrenceNumber = remindersOccurrenceTextBox and remindersOccurrenceTextBox:GetText() or "0",
         showBar = remindersShowBarCheckbox and remindersShowBarCheckbox:GetChecked() or false,
         showCountdown = remindersShowCountdownCheckbox and remindersShowCountdownCheckbox:GetChecked() or false,
     })
@@ -626,13 +673,9 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
             for _, column in ipairs(reminderColumns) do
                 local value = row[column.key] or ""
                 if not isSection and column.key == "label" then
-                    local displayLabel = tostring(value)
-                    if row.spellName and row.spellName ~= "" and row.spellName ~= displayLabel then
-                        displayLabel = string.format("  %s - %s", displayLabel, row.spellName)
-                    else
-                        displayLabel = "  " .. displayLabel
-                    end
-                    value = displayLabel
+                    value = "  " .. tostring(value)
+                elseif not isSection and column.key == "spellName" then
+                    value = row.spellName ~= "" and row.spellName or "-"
                 end
 
                 line.Columns[column.key]:SetText(tostring(value))
@@ -856,14 +899,14 @@ local function BuildRemindersTab(framework, parent)
 
     local observedHeader = observedPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     observedHeader:SetPoint("TOPLEFT", observedPanel, "TOPLEFT", 10, -10)
-    observedHeader:SetText("Observed Timers")
+    observedHeader:SetText("BigWigs Timers")
     observedHeader:SetTextColor(1, 0.82, 0, 1)
 
     local observedSubtitle = observedPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     observedSubtitle:SetPoint("TOPLEFT", observedHeader, "BOTTOMLEFT", 0, -4)
     observedSubtitle:SetPoint("TOPRIGHT", observedPanel, "TOPRIGHT", -12, -14)
     observedSubtitle:SetJustifyH("LEFT")
-    observedSubtitle:SetText("Filter by raid, then pick a boss timer to attach a reminder.")
+    observedSubtitle:SetText("Load a raid, then pick a BigWigs timer definition to attach a reminder.")
     observedSubtitle:SetTextColor(0.72, 0.72, 0.78, 1)
 
     remindersRaidDropdown = framework:CreateDropDown(
@@ -871,11 +914,11 @@ local function BuildRemindersTab(framework, parent)
         function()
             local reminders = AP:GetModule("Reminders", true)
             local options = {}
-            if not reminders or not reminders.GetObservedRaidFilterItems then
+            if not reminders or not reminders.GetRaidFilterItems then
                 return options
             end
 
-            for _, item in ipairs(reminders:GetObservedRaidFilterItems()) do
+            for _, item in ipairs(reminders:GetRaidFilterItems(remindersOnlyCurrentExpansion)) do
                 options[#options + 1] = {
                     value = item.value,
                     label = item.label,
@@ -895,7 +938,82 @@ local function BuildRemindersTab(framework, parent)
         framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
     )
     remindersRaidDropdown:SetPoint("TOPLEFT", observedSubtitle, "BOTTOMLEFT", 0, -10)
-    remindersRaidDropdown:SetEmptyTextAndIcon("No observed raids", [[Interface\MINIMAP\TRACKING\Target]])
+    remindersRaidDropdown:SetEmptyTextAndIcon("No BigWigs raids", [[Interface\MINIMAP\TRACKING\Target]])
+
+    remindersBossDropdown = framework:CreateDropDown(
+        observedPanel,
+        function()
+            local reminders = AP:GetModule("Reminders", true)
+            local options = {}
+            if not reminders or not reminders.GetBossFilterItems then
+                return options
+            end
+
+            for _, item in ipairs(reminders:GetBossFilterItems(remindersSelectedRaidFilter)) do
+                options[#options + 1] = {
+                    value = item.value,
+                    label = item.label,
+                    onclick = function()
+                        SelectObservedReminderBoss(item.value)
+                    end,
+                }
+            end
+
+            return options
+        end,
+        remindersSelectedBossFilter,
+        220,
+        20,
+        nil,
+        "$parentRemindersBossDropdown",
+        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
+    )
+    remindersBossDropdown:SetPoint("TOPLEFT", remindersRaidDropdown.widget, "BOTTOMLEFT", 0, -10)
+    remindersBossDropdown:SetEmptyTextAndIcon("No bosses", [[Interface\MINIMAP\TRACKING\Target]])
+
+    local searchLabel = observedPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    searchLabel:SetPoint("LEFT", remindersBossDropdown.widget, "RIGHT", 14, 0)
+    searchLabel:SetText("Search")
+    searchLabel:SetTextColor(0.82, 0.82, 0.88, 1)
+
+    remindersTimerSearchTextBox = framework:CreateTextEntry(
+        observedPanel,
+        function()
+            UpdateReminderSearchFromUI()
+        end,
+        170,
+        20,
+        nil,
+        "$parentRemindersTimerSearchTextBox",
+        nil,
+        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
+    )
+    remindersTimerSearchTextBox:SetPoint("LEFT", searchLabel, "RIGHT", 8, 0)
+    remindersTimerSearchTextBox:SetAutoFocus(false)
+    remindersTimerSearchTextBox:SetText(remindersTimerSearchText or "")
+
+    remindersTimerSearchClearButton = framework:CreateButton(observedPanel, ClearReminderSearchFromUI, 22, 20, "X")
+    remindersTimerSearchClearButton:SetPoint("LEFT", remindersTimerSearchTextBox.widget, "RIGHT", 6, 0)
+    remindersTimerSearchClearButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    remindersCurrentExpansionCheckbox, _ = framework:CreateSwitch(
+        observedPanel,
+        SetRemindersCurrentExpansionOnly,
+        remindersOnlyCurrentExpansion,
+        20,
+        20,
+        nil,
+        nil,
+        nil,
+        "$parentRemindersCurrentExpansionCheckbox"
+    )
+    remindersCurrentExpansionCheckbox:SetAsCheckBox()
+    remindersCurrentExpansionCheckbox:SetPoint("LEFT", remindersRaidDropdown.widget, "RIGHT", 14, 0)
+    remindersCurrentExpansionCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+    local remindersCurrentExpansionLabel = observedPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersCurrentExpansionLabel:SetPoint("LEFT", remindersCurrentExpansionCheckbox.widget, "RIGHT", 6, 0)
+    remindersCurrentExpansionLabel:SetText("Current expansion only")
+    remindersCurrentExpansionCheckbox:CreateExtraSpaceToClick(remindersCurrentExpansionLabel, 170)
 
     remindersDetailsFrame = CreateFrame("Frame", "$parentReminderEditorPanel", parent, "BackdropTemplate")
     remindersDetailsFrame:SetPoint("TOPLEFT", observedPanel, "TOPRIGHT", 16, 0)
@@ -916,7 +1034,7 @@ local function BuildRemindersTab(framework, parent)
     editorHeader:SetTextColor(1, 0.82, 0, 1)
 
     local headerFrame = CreateFrame("Frame", nil, observedPanel)
-    headerFrame:SetPoint("TOPLEFT", remindersRaidDropdown.widget, "BOTTOMLEFT", -2, -12)
+    headerFrame:SetPoint("TOPLEFT", remindersBossDropdown.widget, "BOTTOMLEFT", -2, -12)
     headerFrame:SetPoint("TOPRIGHT", observedPanel, "TOPRIGHT", -8, -8)
     headerFrame:SetHeight(18)
 
@@ -951,10 +1069,12 @@ local function BuildRemindersTab(framework, parent)
 
     remindersDetailsLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     remindersDetailsLabel:SetPoint("TOPLEFT", editorHeader, "BOTTOMLEFT", 0, -10)
+    remindersDetailsLabel:SetPoint("TOPRIGHT", remindersDetailsFrame, "TOPRIGHT", -10, -20)
     remindersDetailsLabel:SetJustifyH("LEFT")
     remindersDetailsLabel:SetJustifyV("TOP")
     remindersDetailsLabel:SetTextColor(0.85, 0.85, 0.85, 1)
-    remindersDetailsLabel:SetWidth(340)
+    remindersDetailsLabel:SetWidth(320)
+    remindersDetailsLabel:SetWordWrap(true)
 
     local reminderTextLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     reminderTextLabel:SetPoint("TOPLEFT", remindersDetailsLabel, "BOTTOMLEFT", 0, -18)
@@ -977,6 +1097,10 @@ local function BuildRemindersTab(framework, parent)
 
     local reminderHelpLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     reminderHelpLabel:SetPoint("TOPLEFT", remindersRuleTextBox.widget, "BOTTOMLEFT", -6, -6)
+    reminderHelpLabel:SetPoint("TOPRIGHT", remindersDetailsFrame, "TOPRIGHT", -10, 0)
+    reminderHelpLabel:SetJustifyH("LEFT")
+    reminderHelpLabel:SetWidth(320)
+    reminderHelpLabel:SetWordWrap(true)
     reminderHelpLabel:SetText("Placeholders: {countdown}, {spell}, {boss}")
     reminderHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
 
@@ -987,6 +1111,10 @@ local function BuildRemindersTab(framework, parent)
 
     local triggerHelpLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     triggerHelpLabel:SetPoint("TOPLEFT", triggerLabel, "BOTTOMLEFT", 0, -4)
+    triggerHelpLabel:SetPoint("TOPRIGHT", remindersDetailsFrame, "TOPRIGHT", -10, 0)
+    triggerHelpLabel:SetJustifyH("LEFT")
+    triggerHelpLabel:SetWidth(320)
+    triggerHelpLabel:SetWordWrap(true)
     triggerHelpLabel:SetText("Show reminder when this many seconds remain (0 = on timer start)")
     triggerHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
 
@@ -1009,8 +1137,41 @@ local function BuildRemindersTab(framework, parent)
     triggerSecondsSuffix:SetText("seconds remaining")
     triggerSecondsSuffix:SetTextColor(0.85, 0.85, 0.85, 1)
 
+    local occurrenceLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    occurrenceLabel:SetPoint("TOPLEFT", remindersTriggerSecondsTextBox.widget, "BOTTOMLEFT", 0, -16)
+    occurrenceLabel:SetText("Occurrence")
+    occurrenceLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local occurrenceHelpLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    occurrenceHelpLabel:SetPoint("TOPLEFT", occurrenceLabel, "BOTTOMLEFT", 0, -4)
+    occurrenceHelpLabel:SetPoint("TOPRIGHT", remindersDetailsFrame, "TOPRIGHT", -10, 0)
+    occurrenceHelpLabel:SetJustifyH("LEFT")
+    occurrenceHelpLabel:SetWidth(320)
+    occurrenceHelpLabel:SetWordWrap(true)
+    occurrenceHelpLabel:SetText("0 = every time, 3 = only on the 3rd timer this pull")
+    occurrenceHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
+
+    remindersOccurrenceTextBox = framework:CreateTextEntry(
+        remindersDetailsFrame,
+        function() end,
+        80,
+        28,
+        nil,
+        "APRaidUtilsReminderOccurrenceTextBox",
+        nil,
+        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
+    )
+    remindersOccurrenceTextBox:SetPoint("TOPLEFT", occurrenceHelpLabel, "BOTTOMLEFT", 0, -8)
+    remindersOccurrenceTextBox:SetAutoFocus(false)
+    remindersOccurrenceTextBox:SetText("0")
+
+    local occurrenceSuffix = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    occurrenceSuffix:SetPoint("LEFT", remindersOccurrenceTextBox.widget, "RIGHT", 8, 0)
+    occurrenceSuffix:SetText("resets on wipe/kill")
+    occurrenceSuffix:SetTextColor(0.85, 0.85, 0.85, 1)
+
     local outputsLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    outputsLabel:SetPoint("TOPLEFT", remindersTriggerSecondsTextBox.widget, "BOTTOMLEFT", 0, -16)
+    outputsLabel:SetPoint("TOPLEFT", remindersOccurrenceTextBox.widget, "BOTTOMLEFT", 0, -16)
     outputsLabel:SetText("Outputs")
     outputsLabel:SetTextColor(1, 0.82, 0, 1)
 
@@ -1062,9 +1223,11 @@ local function BuildRemindersTab(framework, parent)
 
     remindersRuleStatusLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     remindersRuleStatusLabel:SetPoint("TOPLEFT", saveButton.widget, "BOTTOMLEFT", 0, -10)
-    remindersRuleStatusLabel:SetWidth(340)
+    remindersRuleStatusLabel:SetPoint("TOPRIGHT", remindersDetailsFrame, "TOPRIGHT", -10, 0)
+    remindersRuleStatusLabel:SetWidth(320)
     remindersRuleStatusLabel:SetJustifyH("LEFT")
     remindersRuleStatusLabel:SetJustifyV("TOP")
+    remindersRuleStatusLabel:SetWordWrap(true)
     remindersRuleStatusLabel:SetTextColor(0.85, 0.85, 0.85, 1)
 
     parent.RefreshOptions = function()
@@ -1188,6 +1351,10 @@ function AP:RefreshRemindersTab()
         return
     end
 
+    if reminders.PrimeReminderData then
+        reminders:PrimeReminderData(remindersSelectedRaidFilter)
+    end
+
     if remindersStatusLabel and reminders.GetStatusText then
         UpdateWrappedLabel(remindersStatusLabel, reminders:GetStatusText(), FULL_CONTENT_WIDTH)
     end
@@ -1196,13 +1363,48 @@ function AP:RefreshRemindersTab()
         UpdateWrappedLabel(remindersPlaceholderLabel, table.concat(reminders:GetPlaceholderLines(), "\n"), FULL_CONTENT_WIDTH)
     end
 
-    if remindersRaidDropdown and reminders.GetObservedRaidFilterItems then
+    if remindersRaidDropdown and reminders.GetRaidFilterItems then
+        local raidItems = reminders:GetRaidFilterItems(remindersOnlyCurrentExpansion)
+        local hasSelectedRaid = remindersSelectedRaidFilter == "ALL"
+        for _, item in ipairs(raidItems) do
+            if item.value == remindersSelectedRaidFilter then
+                hasSelectedRaid = true
+                break
+            end
+        end
+        if not hasSelectedRaid and reminders.GetCurrentRaidFilterDefault then
+            remindersSelectedRaidFilter = reminders:GetCurrentRaidFilterDefault(remindersOnlyCurrentExpansion)
+        end
         remindersRaidDropdown:Refresh()
         remindersRaidDropdown:Select(remindersSelectedRaidFilter, false, false, false)
     end
 
-    if remindersObservedScrollBox and reminders.GetObservedTimerDisplayRowsForRaid then
-        local rows = reminders:GetObservedTimerDisplayRowsForRaid(remindersSelectedRaidFilter)
+    if remindersBossDropdown and reminders.GetBossFilterItems then
+        local bossItems = reminders:GetBossFilterItems(remindersSelectedRaidFilter)
+        local hasSelectedBoss = remindersSelectedBossFilter == "ALL"
+        for _, item in ipairs(bossItems) do
+            if item.value == remindersSelectedBossFilter then
+                hasSelectedBoss = true
+                break
+            end
+        end
+        if not hasSelectedBoss and reminders.GetCurrentBossFilterDefault then
+            remindersSelectedBossFilter = reminders:GetCurrentBossFilterDefault(remindersSelectedRaidFilter)
+        end
+        remindersBossDropdown:Refresh()
+        remindersBossDropdown:Select(remindersSelectedBossFilter, false, false, false)
+    end
+
+    if remindersTimerSearchTextBox then
+        remindersTimerSearchTextBox:SetText(remindersTimerSearchText or "")
+    end
+
+    if remindersCurrentExpansionCheckbox then
+        remindersCurrentExpansionCheckbox:SetChecked(remindersOnlyCurrentExpansion == true)
+    end
+
+    if remindersObservedScrollBox and reminders.GetDefinitionDisplayRowsForRaid then
+        local rows = reminders:GetDefinitionDisplayRowsForRaid(remindersSelectedRaidFilter, remindersSelectedBossFilter, remindersTimerSearchText)
         remindersObservedScrollBox:SetData(rows)
         remindersObservedScrollBox:Refresh()
 
@@ -1229,8 +1431,8 @@ function AP:RefreshRemindersTab()
         end
     end
 
-    if remindersDetailsLabel and reminders.GetObservedTimerDetailLines then
-        UpdateWrappedLabel(remindersDetailsLabel, table.concat(reminders:GetObservedTimerDetailLines(remindersSelectedTimerKey), "\n"), FULL_CONTENT_WIDTH)
+    if remindersDetailsLabel and reminders.GetDefinitionDetailLines then
+        UpdateWrappedLabel(remindersDetailsLabel, table.concat(reminders:GetDefinitionDetailLines(remindersSelectedTimerKey), "\n"), 320)
     end
 
     if reminders.GetRuleEditorState then
@@ -1251,6 +1453,15 @@ function AP:RefreshRemindersTab()
                 remindersTriggerSecondsTextBox:Enable()
             else
                 remindersTriggerSecondsTextBox:Disable()
+            end
+        end
+
+        if remindersOccurrenceTextBox then
+            remindersOccurrenceTextBox:SetText(editorState.occurrenceNumber or "0")
+            if editorState.hasTimer then
+                remindersOccurrenceTextBox:Enable()
+            else
+                remindersOccurrenceTextBox:Disable()
             end
         end
 
