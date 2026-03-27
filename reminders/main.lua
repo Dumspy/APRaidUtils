@@ -11,6 +11,30 @@ local function CopyTableShallow(source)
     return copy
 end
 
+local function CopyTableDeep(source)
+    if type(source) ~= "table" then
+        return source
+    end
+
+    local copy = {}
+    for key, value in pairs(source) do
+        copy[key] = CopyTableDeep(value)
+    end
+    return copy
+end
+
+local function CreateRuleBucket()
+    return {
+        nextRuleId = 1,
+        order = {},
+        items = {},
+    }
+end
+
+local function IsRuleBucket(value)
+    return type(value) == "table" and type(value.items) == "table" and type(value.order) == "table"
+end
+
 local function NormalizeText(value)
     if value == nil then
         value = ""
@@ -306,7 +330,7 @@ function Reminders:GetStorage()
         if next(profileStorage.definitions) ~= nil then
             for definitionId, definition in pairs(profileStorage.definitions) do
                 if not globalStorage.definitions[definitionId] then
-                    globalStorage.definitions[definitionId] = CopyTableShallow(definition)
+                    globalStorage.definitions[definitionId] = CopyTableDeep(definition)
                 end
             end
         end
@@ -314,7 +338,7 @@ function Reminders:GetStorage()
         if next(profileStorage.observedTimers) ~= nil then
             for timerKey, timerData in pairs(profileStorage.observedTimers) do
                 if not globalStorage.observedTimers[timerKey] then
-                    globalStorage.observedTimers[timerKey] = CopyTableShallow(timerData)
+                    globalStorage.observedTimers[timerKey] = CopyTableDeep(timerData)
                 end
             end
         end
@@ -322,7 +346,7 @@ function Reminders:GetStorage()
         if next(profileStorage.rules) ~= nil then
             for ruleKey, ruleData in pairs(profileStorage.rules) do
                 if not globalStorage.rules[ruleKey] then
-                    globalStorage.rules[ruleKey] = CopyTableShallow(ruleData)
+                    globalStorage.rules[ruleKey] = CopyTableDeep(ruleData)
                 end
             end
         end
@@ -450,12 +474,12 @@ function Reminders:SetPreviewMode(enabled)
     AP:NotifyOptionsChanged()
 end
 
-function Reminders:BuildRuntimeInstanceKey(definitionId)
-    return string.format("%s|%.3f", tostring(definitionId), GetPreciseNow())
+function Reminders:BuildRuntimeInstanceKey(definitionId, ruleId)
+    return string.format("%s|%s|%.3f", tostring(definitionId), tostring(ruleId or "rule"), GetPreciseNow())
 end
 
-function Reminders:BuildPendingInstanceKey(definitionId)
-    return string.format("pending|%s|%.3f", tostring(definitionId), GetPreciseNow())
+function Reminders:BuildPendingInstanceKey(definitionId, ruleId)
+    return string.format("pending|%s|%s|%.3f", tostring(definitionId), tostring(ruleId or "rule"), GetPreciseNow())
 end
 
 function Reminders:BuildRenderedText(rule, activeReminder)
@@ -485,7 +509,7 @@ function Reminders:RefreshActiveReminderDisplay()
 
         if reminder.remaining <= (reminder.secondsBeforeEnd or 0) then
             self.pendingReminders[pendingKey] = nil
-            self:StartActiveReminder(reminder.definitionId, reminder.module, reminder.label, reminder.duration, reminder.endTime, reminder.occurrence, reminder.eventId)
+            self:StartActiveReminder(reminder.definitionId, reminder.ruleId, reminder.module, reminder.label, reminder.duration, reminder.endTime, reminder.occurrence, reminder.eventId)
         end
     end
 
@@ -551,10 +575,23 @@ function Reminders:ClearRuntimeState(moduleName)
         end
     end
 
-    for eventKey, runtimeKey in pairs(self.runtimeEventMap) do
-        local activeReminder = self.activeReminders[runtimeKey]
-        if not activeReminder or activeReminder.moduleName == moduleName then
-            self.runtimeEventMap[eventKey] = nil
+    for eventKey, runtimeKeys in pairs(self.runtimeEventMap) do
+        if type(runtimeKeys) == "table" then
+            for index = #runtimeKeys, 1, -1 do
+                local activeReminder = self.activeReminders[runtimeKeys[index]]
+                if not activeReminder or activeReminder.moduleName == moduleName then
+                    table.remove(runtimeKeys, index)
+                end
+            end
+
+            if #runtimeKeys == 0 then
+                self.runtimeEventMap[eventKey] = nil
+            end
+        else
+            local activeReminder = self.activeReminders[runtimeKeys]
+            if not activeReminder or activeReminder.moduleName == moduleName then
+                self.runtimeEventMap[eventKey] = nil
+            end
         end
     end
 
@@ -1104,6 +1141,7 @@ function Reminders:GetDefinitionDisplayRowsForRaid(filterValue, bossFilterValue,
 
         if matchesBoss and matchesSearch then
             local bossName = definition.bossName or "Unknown"
+            local reminderCount = self:GetRuleCountForDefinition(definition.definitionId)
 
             groupedRows[#groupedRows + 1] = {
                 kind = "timer",
@@ -1112,6 +1150,7 @@ function Reminders:GetDefinitionDisplayRowsForRaid(filterValue, bossFilterValue,
                 label = definition.fullName or definition.definitionId,
                 spellName = definition.easyName,
                 spellText = definition.spellId and tostring(definition.spellId) or tostring(definition.optionKey or "Text"),
+                reminderCount = tostring(reminderCount),
                 lastSeenText = definition.confirmed and "Seen" or "Metadata",
             }
         end
@@ -1132,13 +1171,21 @@ function Reminders:GetDefinitionDetailLines(definitionId)
     return {
         "Boss: " .. tostring(definition.bossName or "Unknown"),
         "Ability: " .. tostring(definition.fullName or "Unknown"),
-        "Easy Name: " .. tostring(definition.easyName ~= "" and definition.easyName or "N/A"),
-        "Spell ID: " .. tostring(definition.spellId or "N/A"),
-        "Encounter ID: " .. tostring(definition.encounterId or "N/A"),
-        "Module: " .. tostring(definition.moduleName or "Unknown"),
-        "Raid: " .. tostring(definition.instanceName or "Unknown"),
-        "Description: " .. tostring(definition.description ~= "" and definition.description or "N/A"),
-        "Confirmed Live: " .. (definition.confirmed and "Yes" or "No"),
+        string.format(
+            "Easy / Key: %s / %s",
+            tostring(definition.easyName ~= "" and definition.easyName or "N/A"),
+            tostring(definition.spellId or definition.optionKey or "N/A")
+        ),
+        string.format(
+            "Module / Raid: %s / %s",
+            tostring(definition.moduleName or "Unknown"),
+            tostring(definition.instanceName or "Unknown")
+        ),
+        string.format(
+            "State / Saved: %s / %d",
+            definition.confirmed and "Seen" or "Metadata",
+            self:GetRuleCountForDefinition(definitionId)
+        ),
     }
 end
 
@@ -1185,12 +1232,137 @@ function Reminders:BuildRuleInstanceMatchKey(module, label, eventId)
     )
 end
 
-function Reminders:GetRule(definitionId)
+function Reminders:GetRuleBucket(definitionId, createIfMissing)
     if not definitionId or definitionId == "" then
         return nil
     end
 
-    return self:GetStorage().rules[definitionId]
+    local storage = self:GetStorage()
+    local bucket = storage.rules[definitionId]
+    if bucket and not IsRuleBucket(bucket) then
+        bucket = nil
+    end
+
+    if not bucket and createIfMissing then
+        bucket = CreateRuleBucket()
+        storage.rules[definitionId] = bucket
+    end
+
+    return bucket
+end
+
+function Reminders:CreateRuleId(bucket)
+    local nextRuleId = math.max(1, tonumber(bucket and bucket.nextRuleId) or 1)
+    local ruleId = "r" .. tostring(nextRuleId)
+
+    while bucket.items[ruleId] do
+        nextRuleId = nextRuleId + 1
+        ruleId = "r" .. tostring(nextRuleId)
+    end
+
+    bucket.nextRuleId = nextRuleId + 1
+    return ruleId
+end
+
+function Reminders:GetOrderedRules(definitionId)
+    local bucket = self:GetRuleBucket(definitionId)
+    local rules = {}
+    local seen = {}
+
+    if not bucket then
+        return rules
+    end
+
+    for _, ruleId in ipairs(bucket.order or {}) do
+        local rule = bucket.items and bucket.items[ruleId]
+        if type(rule) == "table" then
+            rules[#rules + 1] = rule
+            seen[ruleId] = true
+        end
+    end
+
+    for ruleId, rule in pairs(bucket.items or {}) do
+        if type(rule) == "table" and not seen[ruleId] then
+            rules[#rules + 1] = rule
+        end
+    end
+
+    return rules
+end
+
+function Reminders:GetRule(definitionId)
+    local rules = self:GetOrderedRules(definitionId)
+    return rules[1]
+end
+
+function Reminders:GetRuleById(definitionId, ruleId)
+    if not definitionId or definitionId == "" or not ruleId or ruleId == "" then
+        return nil
+    end
+
+    local bucket = self:GetRuleBucket(definitionId)
+    return bucket and bucket.items and bucket.items[ruleId] or nil
+end
+
+function Reminders:GetRuleCountForDefinition(definitionId)
+    local count = 0
+    local bucket = self:GetRuleBucket(definitionId)
+
+    for _ in pairs(bucket and bucket.items or {}) do
+        count = count + 1
+    end
+
+    return count
+end
+
+function Reminders:GetRuleDisplayName(rule)
+    local reminderName = NormalizeText(rule and rule.name or "")
+    if reminderName ~= "" then
+        return reminderName
+    end
+
+    local ruleText = NormalizeText(rule and rule.text or "")
+    if ruleText ~= "" then
+        return ruleText
+    end
+
+    return "New reminder"
+end
+
+function Reminders:BuildRuleListSummary(rule)
+    local secondsBeforeEnd = math.max(0, tonumber(rule and rule.secondsBeforeEnd) or 0)
+    local occurrenceNumber = math.max(0, math.floor((tonumber(rule and rule.occurrenceNumber) or 0) + 0.0001))
+    local triggerText = secondsBeforeEnd > 0 and string.format("%ds", secondsBeforeEnd) or "Start"
+    local occurrenceText = occurrenceNumber > 0 and string.format("Occ %d", occurrenceNumber) or "Every"
+    local outputParts = {}
+
+    if rule and rule.showBar == true then
+        outputParts[#outputParts + 1] = "bar"
+    end
+    if rule and rule.showCountdown == true then
+        outputParts[#outputParts + 1] = "countdown"
+    end
+
+    return string.format(
+        "%s | %s | %s",
+        triggerText,
+        occurrenceText,
+        #outputParts > 0 and table.concat(outputParts, "+") or "text"
+    )
+end
+
+function Reminders:GetRuleListRows(definitionId)
+    local rows = {}
+
+    for _, rule in ipairs(self:GetOrderedRules(definitionId)) do
+        rows[#rows + 1] = {
+            ruleId = rule.ruleId,
+            name = self:GetRuleDisplayName(rule),
+            summary = self:BuildRuleListSummary(rule),
+        }
+    end
+
+    return rows
 end
 
 function Reminders:IsRuleOccurrenceMatch(rule, occurrenceNumber)
@@ -1202,19 +1374,20 @@ function Reminders:IsRuleOccurrenceMatch(rule, occurrenceNumber)
     return occurrenceNumber == math.floor(occurrenceValue + 0.0001)
 end
 
-function Reminders:StartActiveReminder(definitionId, module, label, duration, endTime, occurrenceNumber, eventId)
-    local rule = self:GetRule(definitionId)
+function Reminders:StartActiveReminder(definitionId, ruleId, module, label, duration, endTime, occurrenceNumber, eventId)
+    local rule = self:GetRuleById(definitionId, ruleId)
     if not rule or rule.enabled ~= true then
         return
     end
 
     local definition = self:GetDefinitionById(definitionId)
     local now = GetPreciseNow()
-    local runtimeKey = self:BuildRuntimeInstanceKey(definitionId)
+    local runtimeKey = self:BuildRuntimeInstanceKey(definitionId, ruleId)
     local instanceMatchKey = self:BuildRuleInstanceMatchKey(module, label, eventId)
     local activeReminder = {
         runtimeKey = runtimeKey,
         definitionId = definitionId,
+        ruleId = ruleId,
         timerKey = definitionId,
         moduleName = module and module.moduleName or rule.moduleName,
         bossName = definition and definition.bossName or rule.bossName,
@@ -1233,7 +1406,12 @@ function Reminders:StartActiveReminder(definitionId, module, label, duration, en
     }
 
     self.activeReminders[runtimeKey] = activeReminder
-    self.runtimeEventMap[instanceMatchKey] = runtimeKey
+
+    if not self.runtimeEventMap[instanceMatchKey] then
+        self.runtimeEventMap[instanceMatchKey] = {}
+    end
+
+    self.runtimeEventMap[instanceMatchKey][#self.runtimeEventMap[instanceMatchKey] + 1] = runtimeKey
 end
 
 function Reminders:ActivateRuleForTimer(definitionId, module, label, duration, eventId)
@@ -1241,44 +1419,63 @@ function Reminders:ActivateRuleForTimer(definitionId, module, label, duration, e
         return
     end
 
-    local rule = self:GetRule(definitionId)
-    if not rule or rule.enabled ~= true then
+    local rules = self:GetOrderedRules(definitionId)
+    if #rules == 0 then
+        return
+    end
+
+    local hasEnabledRule = false
+    for _, rule in ipairs(rules) do
+        if rule.enabled == true then
+            hasEnabledRule = true
+            break
+        end
+    end
+
+    if not hasEnabledRule then
         return
     end
 
     local occurrenceNumber = (self.pullCounts[definitionId] or 0) + 1
     self.pullCounts[definitionId] = occurrenceNumber
 
-    if not self:IsRuleOccurrenceMatch(rule, occurrenceNumber) then
-        return
-    end
-
     local now = GetPreciseNow()
-    local secondsBeforeEnd = math.max(0, tonumber(rule.secondsBeforeEnd) or 0)
     local endTime = now + (duration or 0)
+    local activatedAny = false
 
-    if secondsBeforeEnd > 0 and duration and duration > secondsBeforeEnd then
-        local pendingKey = self:BuildPendingInstanceKey(definitionId)
-        self.pendingReminders[pendingKey] = {
-            pendingKey = pendingKey,
-            definitionId = definitionId,
-            timerKey = definitionId,
-            module = module,
-            moduleName = module and module.moduleName or rule.moduleName,
-            label = NormalizeText(label),
-            duration = duration or 0,
-            endTime = endTime,
-            eventId = eventId,
-            occurrence = occurrenceNumber,
-            secondsBeforeEnd = secondsBeforeEnd,
-            instanceMatchKey = self:BuildRuleInstanceMatchKey(module, label, eventId),
-        }
-    else
-        self:StartActiveReminder(definitionId, module, label, duration, endTime, occurrenceNumber, eventId)
+    for _, rule in ipairs(rules) do
+        if rule.enabled == true and self:IsRuleOccurrenceMatch(rule, occurrenceNumber) then
+            local secondsBeforeEnd = math.max(0, tonumber(rule.secondsBeforeEnd) or 0)
+
+            if secondsBeforeEnd > 0 and duration and duration > secondsBeforeEnd then
+                local pendingKey = self:BuildPendingInstanceKey(definitionId, rule.ruleId)
+                self.pendingReminders[pendingKey] = {
+                    pendingKey = pendingKey,
+                    definitionId = definitionId,
+                    ruleId = rule.ruleId,
+                    timerKey = definitionId,
+                    module = module,
+                    moduleName = module and module.moduleName or rule.moduleName,
+                    label = NormalizeText(label),
+                    duration = duration or 0,
+                    endTime = endTime,
+                    eventId = eventId,
+                    occurrence = occurrenceNumber,
+                    secondsBeforeEnd = secondsBeforeEnd,
+                    instanceMatchKey = self:BuildRuleInstanceMatchKey(module, label, eventId),
+                }
+            else
+                self:StartActiveReminder(definitionId, rule.ruleId, module, label, duration, endTime, occurrenceNumber, eventId)
+            end
+
+            activatedAny = true
+        end
     end
 
-    self:StartReminderDisplayTimer()
-    self:RefreshActiveReminderDisplay()
+    if activatedAny then
+        self:StartReminderDisplayTimer()
+        self:RefreshActiveReminderDisplay()
+    end
 end
 
 function Reminders:GetMatchingReminderKeys(collection, module, text, eventId)
@@ -1387,13 +1584,16 @@ function Reminders:HandleBigWigsResumeBar(_, module, text, eventId)
     self:RefreshActiveReminderDisplay()
 end
 
-function Reminders:GetRuleEditorState(definitionId)
+function Reminders:GetRuleEditorState(definitionId, ruleId)
     local definition = self:GetDefinitionById(definitionId)
-    local rule = self:GetRule(definitionId)
+    local rules = self:GetOrderedRules(definitionId)
+    local rule = ruleId and self:GetRuleById(definitionId, ruleId) or nil
 
     if not definition then
         return {
             hasTimer = false,
+            hasSelectedRule = false,
+            name = "",
             text = "",
             secondsBeforeEnd = "0",
             occurrenceNumber = "0",
@@ -1406,17 +1606,21 @@ function Reminders:GetRuleEditorState(definitionId)
     if not rule then
         return {
             hasTimer = true,
+            hasSelectedRule = false,
+            name = "",
             text = "",
             secondsBeforeEnd = "0",
             occurrenceNumber = "0",
             showBar = false,
             showCountdown = false,
-            statusText = "No reminder saved for this timer yet.",
+            statusText = #rules > 0 and "Configure a new reminder for this timer." or "No reminders saved for this timer yet. Click Add Reminder to create one.",
         }
     end
 
     return {
         hasTimer = true,
+        hasSelectedRule = true,
+        name = rule.name or "",
         text = rule.text or "",
         secondsBeforeEnd = tostring(rule.secondsBeforeEnd or 0),
         occurrenceNumber = tostring(rule.occurrenceNumber or 0),
@@ -1426,7 +1630,12 @@ function Reminders:GetRuleEditorState(definitionId)
     }
 end
 
-function Reminders:SaveRule(definitionId, data)
+function Reminders:SaveRule(definitionId, ruleId, data)
+    if type(ruleId) == "table" and data == nil then
+        data = ruleId
+        ruleId = nil
+    end
+
     local definition = self:GetDefinitionById(definitionId)
     if not definition then
         return false, "Select a BigWigs timer definition first."
@@ -1436,6 +1645,8 @@ function Reminders:SaveRule(definitionId, data)
     if text == "" then
         return false, "Reminder text cannot be empty."
     end
+
+    local name = NormalizeText(data and data.name)
 
     local secondsBeforeEnd = tonumber(data and data.secondsBeforeEnd)
     if secondsBeforeEnd == nil or secondsBeforeEnd < 0 then
@@ -1452,15 +1663,34 @@ function Reminders:SaveRule(definitionId, data)
     end
     occurrenceNumber = math.floor(occurrenceNumber + 0.0001)
 
-    self:GetStorage().rules[definitionId] = {
+    local bucket = self:GetRuleBucket(definitionId, true)
+    local existingRule = ruleId and bucket.items[ruleId] or nil
+    local enabled = true
+    if ruleId and not existingRule then
+        return false, "Select a saved reminder first."
+    end
+
+    if existingRule and existingRule.enabled == false then
+        enabled = false
+    end
+
+    if not ruleId then
+        ruleId = self:CreateRuleId(bucket)
+        bucket.order[#bucket.order + 1] = ruleId
+    end
+
+    bucket.items[ruleId] = {
+        ruleId = ruleId,
         definitionId = definitionId,
         timerKey = definitionId,
+        name = name,
         text = text,
         secondsBeforeEnd = secondsBeforeEnd,
         occurrenceNumber = occurrenceNumber,
         showBar = data and data.showBar == true or false,
         showCountdown = data and data.showCountdown == true or false,
-        enabled = true,
+        enabled = enabled,
+        createdAt = existingRule and existingRule.createdAt or time(),
         updatedAt = time(),
         encounterId = definition.encounterId,
         moduleName = definition.moduleName,
@@ -1473,29 +1703,60 @@ function Reminders:SaveRule(definitionId, data)
     }
 
     AP:NotifyOptionsChanged()
-    return true, "Reminder saved."
+    return true, existingRule and "Reminder updated." or "Reminder saved.", ruleId
 end
 
-function Reminders:DeleteRule(definitionId)
+function Reminders:DeleteRule(definitionId, ruleId)
     if not definitionId or definitionId == "" then
         return false, "Select a BigWigs timer definition first."
     end
 
-    if not self:GetStorage().rules[definitionId] then
-        return false, "No saved reminder exists for this timer."
+    local bucket = self:GetRuleBucket(definitionId)
+    if not bucket or next(bucket.items or {}) == nil then
+        return false, "No saved reminders exist for this timer."
     end
 
-    self:GetStorage().rules[definitionId] = nil
+    if not ruleId or ruleId == "" then
+        local defaultRule = self:GetRule(definitionId)
+        ruleId = defaultRule and defaultRule.ruleId or nil
+    end
+
+    if not ruleId or not bucket.items[ruleId] then
+        return false, "Select a saved reminder first."
+    end
+
+    bucket.items[ruleId] = nil
+    for index = #bucket.order, 1, -1 do
+        if bucket.order[index] == ruleId then
+            table.remove(bucket.order, index)
+        end
+    end
+
+    if next(bucket.items) == nil then
+        self:GetStorage().rules[definitionId] = nil
+    end
+
     AP:NotifyOptionsChanged()
     return true, "Reminder deleted."
 end
 
 function Reminders:GetRuleCount()
     local count = 0
-    for _ in pairs(self:GetStorage().rules or {}) do
-        count = count + 1
+    for _, bucket in pairs(self:GetStorage().rules or {}) do
+        if IsRuleBucket(bucket) then
+            for _ in pairs(bucket.items or {}) do
+                count = count + 1
+            end
+        end
     end
     return count
+end
+
+function Reminders:PrimeReminderData(filterValue)
+    self.debugLastRequestedRaidFilter = filterValue
+    if filterValue and filterValue ~= "ALL" then
+        self:EnsureRaidMetadataLoaded(filterValue)
+    end
 end
 
 function Reminders:GetDefinitionCount()
@@ -1546,6 +1807,7 @@ function Reminders:GetPlaceholderLines()
         "Metadata-first reminder setup is enabled.",
         "- Raid-only, BigWigs-only reminder support",
         "- Timer picker is built from BigWigs boss module metadata",
+        "- Multiple reminders can be saved per timer",
         "- Live bars still drive reminder firing and confirmation",
         "- Occurrence counts reset on wipe/kill",
     }
@@ -1564,51 +1826,4 @@ function Reminders:GetPlaceholderLines()
     end
 
     return lines
-end
-
-function Reminders:MigrateLegacyRules()
-    local storage = self:GetStorage()
-    if storage.legacyRuleMigrationComplete then
-        return
-    end
-
-    local migrations = {}
-    for ruleKey, rule in pairs(storage.rules or {}) do
-        if type(ruleKey) == "string" and ruleKey:find("|text:", 1, true) then
-            local observed = storage.observedTimers[ruleKey]
-            if observed then
-                local optionKey = observed.spellId or nil
-                local targetId = self:GetDefinitionId({
-                    moduleName = observed.moduleName,
-                    GetEncounterID = function()
-                        return observed.encounterId
-                    end,
-                }, optionKey, observed.label)
-                if targetId ~= ruleKey then
-                    migrations[#migrations + 1] = {
-                        from = ruleKey,
-                        to = targetId,
-                        rule = rule,
-                    }
-                end
-            end
-        end
-    end
-
-    for _, migration in ipairs(migrations) do
-        storage.rules[migration.to] = CopyTableShallow(migration.rule)
-        storage.rules[migration.to].definitionId = migration.to
-        storage.rules[migration.to].timerKey = migration.to
-        storage.rules[migration.from] = nil
-    end
-
-    storage.legacyRuleMigrationComplete = true
-end
-
-function Reminders:PrimeReminderData(filterValue)
-    self.debugLastRequestedRaidFilter = filterValue
-    self:MigrateLegacyRules()
-    if filterValue and filterValue ~= "ALL" then
-        self:EnsureRaidMetadataLoaded(filterValue)
-    end
 end
