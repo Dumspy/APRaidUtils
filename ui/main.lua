@@ -18,8 +18,6 @@ local settingsTab
 local settingsTabRefreshBase
 local settingsCurrentCharacterLabel
 local remindersTab
-local remindersStatusLabel
-local remindersPlaceholderLabel
 local remindersBrowserFrame
 local remindersObservedScrollBox
 local remindersRaidDropdown
@@ -38,20 +36,31 @@ local remindersEditorBackButton
 local remindersRuleListHeaderLabel
 local remindersRuleListScrollBox
 local remindersRuleStatusLabel
+local remindersHelpLabel
 local remindersRuleNameTextBox
 local remindersRuleTextBox
 local remindersTriggerSecondsTextBox
 local remindersOccurrenceTextBox
+local remindersTimingRow
+local remindersFormPanel
+local remindersPhaseLabel
+local remindersPhaseDropdownButton
+local remindersPhaseDropdownMenu
+local remindersPhaseDropdownEmptyLabel
+local remindersOutputsLabel
+local remindersPhaseControls = {}
+local remindersUpdatingPhaseControls = false
 local remindersShowBarCheckbox
 local remindersShowCountdownCheckbox
 local remindersAddRuleButton
 local remindersDeleteRuleButton
+local remindersSaveButton
 local remindersFormHeaderLabel
 
 local CONTENT_WIDTH = 1020
 local BODY_TOP_OFFSET = -90
 local FULL_CONTENT_WIDTH = 1156
-local REMINDER_FORM_WIDTH = 520
+local REMINDER_FORM_WIDTH = 500
 local REMINDER_LIST_PANEL_WIDTH = 320
 local ROSTER_INPUT_HEIGHT = 126
 local ROSTER_PREVIEW_ROW_HEIGHT = 20
@@ -574,6 +583,9 @@ local function SelectReminderRule(ruleId)
 end
 
 local function StartNewReminderRule()
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersSelectedRuleId = REMINDER_DRAFT_RULE_ID
     remindersCreatingNewRule = true
     AP:RefreshRemindersTab()
@@ -584,6 +596,9 @@ local function OpenReminderEditorForTimer(timerKey)
         return
     end
 
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersSelectedTimerKey = timerKey
     remindersSelectedRuleId = nil
     remindersCreatingNewRule = false
@@ -592,12 +607,18 @@ local function OpenReminderEditorForTimer(timerKey)
 end
 
 local function ReturnToReminderBrowserPage()
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersActivePage = "browser"
     remindersCreatingNewRule = false
     AP:RefreshRemindersTab()
 end
 
 local function SelectObservedReminderRaid(instanceName)
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersActivePage = "browser"
     remindersSelectedRaidFilter = instanceName or "ALL"
     remindersSelectedBossFilter = "ALL"
@@ -613,6 +634,9 @@ local function SelectObservedReminderRaid(instanceName)
 end
 
 local function SelectObservedReminderBoss(bossKey)
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersActivePage = "browser"
     remindersSelectedBossFilter = bossKey or "ALL"
     remindersTimerSearchText = ""
@@ -623,6 +647,9 @@ local function SelectObservedReminderBoss(bossKey)
 end
 
 local function SetRemindersCurrentExpansionOnly(_, _, value)
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersOnlyCurrentExpansion = value == true
     remindersActivePage = "browser"
     remindersSelectedRaidFilter = "ALL"
@@ -635,6 +662,9 @@ local function SetRemindersCurrentExpansionOnly(_, _, value)
 end
 
 local function UpdateReminderSearchFromUI()
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersActivePage = "browser"
     remindersTimerSearchText = remindersTimerSearchTextBox and remindersTimerSearchTextBox:GetText() or ""
     remindersSelectedTimerKey = nil
@@ -644,6 +674,9 @@ local function UpdateReminderSearchFromUI()
 end
 
 local function ClearReminderSearchFromUI()
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:Hide()
+    end
     remindersActivePage = "browser"
     remindersTimerSearchText = ""
     remindersSelectedTimerKey = nil
@@ -665,6 +698,332 @@ local function SetReminderRuleStatus(text, r, g, b)
 end
 
 local function HandleReminderOutputToggle()
+end
+
+local function GetReminderPhaseDropdownSummary(phaseOptions, phaseFilters)
+    local selected = {}
+    local selectedSet = {}
+
+    for _, phaseToken in ipairs(phaseFilters or {}) do
+        selectedSet[phaseToken] = true
+    end
+
+    if next(selectedSet) == nil then
+        return "All phases"
+    end
+
+    for _, option in ipairs(phaseOptions or {}) do
+        if selectedSet[option.value] then
+            selected[#selected + 1] = option.label
+            selectedSet[option.value] = nil
+        end
+    end
+
+    for phaseToken in pairs(selectedSet) do
+        selected[#selected + 1] = phaseToken
+    end
+
+    if #selected == 0 then
+        return "All phases"
+    end
+
+    local summary = table.concat(selected, ", ")
+    if #summary > 42 and #selected > 1 then
+        return string.format("%d selected", #selected)
+    end
+
+    return summary
+end
+
+local function HandleReminderPhaseToggle(widget, _, value)
+    if remindersUpdatingPhaseControls then
+        return
+    end
+
+    if #remindersPhaseControls == 0 then
+        return
+    end
+
+    local allControl = remindersPhaseControls[1]
+    local allChecked = allControl and allControl.checkbox:GetChecked() == true
+    local clickedAll = false
+
+    for _, control in ipairs(remindersPhaseControls) do
+        if control.checkbox == widget then
+            clickedAll = control.value == "__all__"
+            break
+        end
+    end
+
+    if clickedAll and value == true then
+        for _, control in ipairs(remindersPhaseControls) do
+            if control.value ~= "__all__" then
+                control.checkbox:SetChecked(false)
+            end
+        end
+        return
+    end
+
+    local hasSpecificSelection = false
+    for _, control in ipairs(remindersPhaseControls) do
+        if control.value ~= "__all__" and control.checkbox:GetChecked() == true then
+            hasSpecificSelection = true
+            break
+        end
+    end
+
+    if hasSpecificSelection then
+        if allControl then
+            allControl.checkbox:SetChecked(false)
+        end
+    elseif not allChecked then
+        if allControl then
+            allControl.checkbox:SetChecked(true)
+        end
+    end
+
+    if remindersPhaseDropdownButton then
+        local phaseOptions = {}
+        for _, control in ipairs(remindersPhaseControls) do
+            if control.value ~= "__all__" then
+                phaseOptions[#phaseOptions + 1] = {
+                    value = control.value,
+                    label = control.label:GetText(),
+                }
+            end
+        end
+
+        remindersPhaseDropdownButton:SetText(GetReminderPhaseDropdownSummary(phaseOptions, GetSelectedReminderPhaseFiltersFromUI()))
+    end
+end
+
+local function GetSelectedReminderPhaseFiltersFromUI()
+    local selected = {}
+    local allControl = remindersPhaseControls[1]
+    if allControl and allControl.value == "__all__" and allControl.checkbox:GetChecked() == true then
+        return selected
+    end
+
+    for _, control in ipairs(remindersPhaseControls) do
+        if control.value ~= "__all__" and control.checkbox:GetChecked() == true then
+            selected[#selected + 1] = control.value
+        end
+    end
+
+    return selected
+end
+
+local function EnsureReminderPhaseControl(parent, index, labelText, phaseValue)
+    local control = remindersPhaseControls[index]
+    local framework = GetFramework()
+    if control or not framework then
+        if control then
+            control.value = phaseValue
+            control.label:SetText(labelText)
+        end
+        return control
+    end
+
+    local checkbox, _ = framework:CreateSwitch(
+        parent,
+        HandleReminderPhaseToggle,
+        false,
+        20,
+        20,
+        nil,
+        nil,
+        nil,
+        "$parentReminderPhaseCheckbox" .. index
+    )
+    checkbox:SetAsCheckBox()
+    checkbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    control = {
+        checkbox = checkbox,
+        label = label,
+        value = phaseValue,
+    }
+    remindersPhaseControls[index] = control
+    control.label:SetText(labelText)
+    return control
+end
+
+local function RefreshReminderPhaseControls(parent, editorState)
+    if not parent then
+        return
+    end
+
+    local phaseOptions = editorState and editorState.phaseOptions or {}
+    local selectedPhases = {}
+    for _, phaseToken in ipairs(editorState and editorState.phaseFilters or {}) do
+        selectedPhases[phaseToken] = true
+    end
+
+    local allChecked = next(selectedPhases) == nil
+    local columnWidth = math.max(150, math.floor((parent:GetWidth() - 24) / 2))
+    local rowHeight = 24
+    local baseX = 8
+    local baseY = -8
+
+    remindersUpdatingPhaseControls = true
+
+    local allControl = EnsureReminderPhaseControl(parent, 1, "All phases", "__all__")
+    if allControl then
+        allControl.checkbox:ClearAllPoints()
+        allControl.checkbox:SetPoint("TOPLEFT", parent, "TOPLEFT", baseX, baseY)
+        allControl.label:ClearAllPoints()
+        allControl.label:SetPoint("LEFT", allControl.checkbox.widget, "RIGHT", 6, 0)
+        allControl.checkbox:CreateExtraSpaceToClick(allControl.label, 70)
+        allControl.checkbox:SetChecked(allChecked)
+        allControl.checkbox:SetEnabled(editorState and editorState.hasTimer == true)
+        allControl.checkbox:Show()
+        allControl.label:Show()
+    end
+
+    local activeIndex = 2
+    for _, option in ipairs(phaseOptions) do
+        local control = EnsureReminderPhaseControl(parent, activeIndex, option.label, option.value)
+        local optionIndex = activeIndex - 2
+        local rowIndex = math.floor(optionIndex / 2)
+        local columnIndex = optionIndex % 2
+        control.checkbox:ClearAllPoints()
+        control.checkbox:SetPoint("TOPLEFT", parent, "TOPLEFT", baseX + (columnIndex * columnWidth), baseY - rowHeight - (rowIndex * rowHeight))
+        control.label:ClearAllPoints()
+        control.label:SetPoint("LEFT", control.checkbox.widget, "RIGHT", 6, 0)
+        control.checkbox:CreateExtraSpaceToClick(control.label, math.max(80, columnWidth - 24))
+        control.value = option.value
+        control.label:SetText(option.label)
+        control.checkbox:SetChecked(selectedPhases[option.value] == true)
+        control.checkbox:SetEnabled(editorState and editorState.hasTimer == true)
+        control.checkbox:Show()
+        control.label:Show()
+        activeIndex = activeIndex + 1
+    end
+
+    for index = activeIndex, #remindersPhaseControls do
+        local control = remindersPhaseControls[index]
+        if control then
+            control.checkbox:Hide()
+            control.label:Hide()
+        end
+    end
+
+    if remindersPhaseDropdownEmptyLabel then
+        remindersPhaseDropdownEmptyLabel:SetShown(#phaseOptions == 0)
+    end
+
+    local optionRows = math.ceil(math.max(0, #phaseOptions) / 2)
+    parent:SetHeight(math.max(34, 12 + rowHeight + (optionRows * rowHeight)))
+
+    remindersUpdatingPhaseControls = false
+end
+
+local function ReanchorReminderPhaseDropdownMenu()
+    if not remindersPhaseDropdownMenu or not remindersPhaseDropdownButton or not remindersDetailsFrame then
+        return
+    end
+
+    remindersPhaseDropdownMenu:ClearAllPoints()
+
+    local menuHeight = remindersPhaseDropdownMenu:GetHeight() or 0
+    local buttonBottom = remindersPhaseDropdownButton.widget and remindersPhaseDropdownButton.widget:GetBottom() or nil
+    local buttonTop = remindersPhaseDropdownButton.widget and remindersPhaseDropdownButton.widget:GetTop() or nil
+    local frameBottom = remindersDetailsFrame:GetBottom()
+    local frameTop = remindersDetailsFrame:GetTop()
+
+    if buttonBottom and buttonTop and frameBottom and frameTop then
+        local availableBelow = buttonBottom - frameBottom
+        local availableAbove = frameTop - buttonTop
+
+        if menuHeight + 8 > availableBelow and availableAbove > availableBelow then
+            remindersPhaseDropdownMenu:SetPoint("BOTTOMLEFT", remindersPhaseDropdownButton.widget, "TOPLEFT", 0, 4)
+            return
+        end
+    end
+
+    remindersPhaseDropdownMenu:SetPoint("TOPLEFT", remindersPhaseDropdownButton.widget, "BOTTOMLEFT", 0, -4)
+end
+
+local function RefreshReminderPhaseDropdown(editorState)
+    if not remindersPhaseDropdownButton or not remindersPhaseLabel then
+        return
+    end
+
+    local phaseOptions = editorState and editorState.phaseOptions or {}
+    local phaseFilters = editorState and editorState.phaseFilters or {}
+    local shouldShow = #phaseOptions > 1 and editorState and editorState.hasTimer == true
+
+    remindersPhaseLabel:SetShown(shouldShow)
+    remindersPhaseDropdownButton:SetShown(shouldShow)
+
+    if remindersOutputsLabel then
+        remindersOutputsLabel:ClearAllPoints()
+        if shouldShow then
+            remindersOutputsLabel:SetPoint("TOPLEFT", remindersPhaseDropdownButton.widget, "BOTTOMLEFT", 0, -12)
+        elseif remindersTimingRow then
+            remindersOutputsLabel:SetPoint("TOPLEFT", remindersTimingRow, "BOTTOMLEFT", 0, -12)
+        end
+    end
+
+    if not shouldShow then
+        if remindersPhaseDropdownMenu then
+            remindersPhaseDropdownMenu:Hide()
+        end
+        return
+    end
+
+    remindersPhaseDropdownButton:SetText(GetReminderPhaseDropdownSummary(phaseOptions, phaseFilters))
+
+    remindersPhaseDropdownButton:Enable()
+
+    if remindersPhaseDropdownEmptyLabel then
+        remindersPhaseDropdownEmptyLabel:SetShown(#phaseOptions == 0)
+    end
+end
+
+local function UpdateReminderEditorFormLayout()
+    if not remindersFormPanel then
+        return
+    end
+
+    local contentWidth = math.max(320, math.floor(remindersFormPanel:GetWidth() - 24))
+
+    if remindersRuleNameTextBox and remindersRuleNameTextBox.widget then
+        remindersRuleNameTextBox.widget:SetWidth(contentWidth)
+    end
+
+    if remindersRuleTextBox and remindersRuleTextBox.widget then
+        remindersRuleTextBox.widget:SetWidth(contentWidth)
+    end
+
+    if remindersHelpLabel then
+        remindersHelpLabel:SetWidth(contentWidth)
+    end
+
+    if remindersTimingRow then
+        remindersTimingRow:SetWidth(contentWidth)
+    end
+
+    if remindersPhaseDropdownButton and remindersPhaseDropdownButton.widget then
+        remindersPhaseDropdownButton.widget:SetWidth(contentWidth)
+    end
+
+    if remindersPhaseDropdownMenu then
+        remindersPhaseDropdownMenu:SetWidth(contentWidth)
+        ReanchorReminderPhaseDropdownMenu()
+    end
+
+    if remindersRuleStatusLabel then
+        remindersRuleStatusLabel:SetWidth(contentWidth)
+    end
+
+    if remindersSaveButton and remindersDeleteRuleButton and remindersDeleteRuleButton.widget then
+        local availableForDelete = contentWidth - remindersSaveButton.widget:GetWidth() - 10
+        remindersDeleteRuleButton.widget:SetWidth(math.min(120, math.max(90, availableForDelete)))
+    end
 end
 
 local function EnsureReminderRuleSelectionVisible(ruleRows)
@@ -721,6 +1080,7 @@ local function SaveReminderRuleFromUI()
         text = remindersRuleTextBox and remindersRuleTextBox:GetText() or "",
         secondsBeforeEnd = remindersTriggerSecondsTextBox and remindersTriggerSecondsTextBox:GetText() or "0",
         occurrenceNumber = remindersOccurrenceTextBox and remindersOccurrenceTextBox:GetText() or "0",
+        phaseFilters = GetSelectedReminderPhaseFiltersFromUI(),
         showBar = remindersShowBarCheckbox and remindersShowBarCheckbox:GetChecked() or false,
         showCountdown = remindersShowCountdownCheckbox and remindersShowCountdownCheckbox:GetChecked() or false,
     })
@@ -803,6 +1163,7 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
             if isSection then
                 line:SetBackdropColor(0.14, 0.12, 0.05, 0.5)
                 line:SetScript("OnClick", nil)
+                line:SetScript("OnDoubleClick", nil)
                 if line.OpenButton then
                     line.OpenButton:Hide()
                 end
@@ -810,6 +1171,9 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
                 line:SetBackdropColor(isSelected and 0.12 or 0.08, isSelected and 0.16 or 0.08, isSelected and 0.1 or 0.1, isSelected and 0.55 or 0.35)
                 line:SetScript("OnClick", function()
                     SelectObservedReminderTimer(row.timerKey)
+                end)
+                line:SetScript("OnDoubleClick", function()
+                    OpenReminderEditorForTimer(row.timerKey)
                 end)
                 if line.OpenButton then
                     line.OpenButton:SetClickFunction(function(_, _, timerKey)
@@ -986,6 +1350,258 @@ local function BuildRosterTab(framework, parent)
     SetDefaultRosterPreviewRows()
 end
 
+local function BuildReminderEditorSection(framework, parent, contentAnchor)
+    remindersDetailsFrame = CreateFrame("Frame", "$parentReminderEditorPanel", parent, "BackdropTemplate")
+    remindersDetailsFrame:SetPoint("TOPLEFT", contentAnchor, "TOPLEFT", 0, 0)
+    remindersDetailsFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 20)
+    remindersDetailsFrame:SetBackdrop({
+        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
+        edgeFile = [[Interface\Buttons\WHITE8X8]],
+        edgeSize = 1,
+        tile = true,
+        tileSize = 64,
+    })
+    remindersDetailsFrame:SetBackdropColor(0.08, 0.08, 0.1, 0.35)
+    remindersDetailsFrame:SetBackdropBorderColor(0.2, 0.2, 0.24, 0.9)
+    remindersDetailsFrame:Hide()
+
+    remindersEditorBackButton = framework:CreateButton(remindersDetailsFrame, ReturnToReminderBrowserPage, 100, 22, "Back")
+    remindersEditorBackButton:SetPoint("TOPLEFT", remindersDetailsFrame, "TOPLEFT", 10, -10)
+    remindersEditorBackButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    remindersEditorHeaderLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    remindersEditorHeaderLabel:SetPoint("LEFT", remindersEditorBackButton.widget, "RIGHT", 12, 0)
+    remindersEditorHeaderLabel:SetText("Timer Reminders")
+    remindersEditorHeaderLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersDetailsLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersDetailsLabel:SetPoint("TOPLEFT", remindersEditorBackButton.widget, "BOTTOMLEFT", 0, -8)
+    remindersDetailsLabel:SetPoint("TOPRIGHT", remindersDetailsFrame, "TOPRIGHT", -12, -18)
+    remindersDetailsLabel:SetJustifyH("LEFT")
+    remindersDetailsLabel:SetJustifyV("TOP")
+    remindersDetailsLabel:SetTextColor(0.85, 0.85, 0.85, 1)
+    remindersDetailsLabel:SetWidth(FULL_CONTENT_WIDTH - 20)
+    remindersDetailsLabel:SetWordWrap(true)
+    remindersDetailsLabel:SetMaxLines(4)
+
+    local listPanel = CreateFrame("Frame", nil, remindersDetailsFrame, "BackdropTemplate")
+    listPanel:SetPoint("TOPLEFT", remindersDetailsLabel, "BOTTOMLEFT", 0, -8)
+    listPanel:SetPoint("BOTTOMLEFT", remindersDetailsFrame, "BOTTOMLEFT", 12, 12)
+    listPanel:SetWidth(REMINDER_LIST_PANEL_WIDTH)
+    listPanel:SetBackdrop({
+        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
+        edgeFile = [[Interface\Buttons\WHITE8X8]],
+        edgeSize = 1,
+        tile = true,
+        tileSize = 64,
+    })
+    listPanel:SetBackdropColor(0.05, 0.05, 0.07, 0.55)
+    listPanel:SetBackdropBorderColor(0.18, 0.18, 0.22, 0.9)
+
+    local reminderListHeaderFrame = CreateFrame("Frame", nil, listPanel)
+    reminderListHeaderFrame:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 10, -10)
+    reminderListHeaderFrame:SetPoint("TOPRIGHT", listPanel, "TOPRIGHT", -10, -10)
+    reminderListHeaderFrame:SetHeight(22)
+
+    remindersRuleListHeaderLabel = listPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    remindersRuleListHeaderLabel:SetPoint("LEFT", reminderListHeaderFrame, "LEFT", 0, 0)
+    remindersRuleListHeaderLabel:SetText("Saved Reminders")
+    remindersRuleListHeaderLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersAddRuleButton = framework:CreateButton(listPanel, StartNewReminderRule, 110, 22, "Add Reminder")
+    remindersAddRuleButton:SetPoint("RIGHT", reminderListHeaderFrame, "RIGHT", 0, 0)
+    remindersAddRuleButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    remindersRuleListScrollBox = framework:CreateScrollBox(
+        listPanel,
+        "$parentRemindersRuleListScrollBox",
+        RefreshReminderRuleLines,
+        {},
+        1,
+        1,
+        1,
+        REMINDER_RULE_ROW_HEIGHT,
+        CreateReminderRuleLine,
+        true
+    )
+    remindersRuleListScrollBox:SetPoint("TOPLEFT", reminderListHeaderFrame, "BOTTOMLEFT", 0, -8)
+    remindersRuleListScrollBox:SetPoint("BOTTOMRIGHT", listPanel, "BOTTOMRIGHT", -10, 10)
+    framework:ReskinSlider(remindersRuleListScrollBox)
+    if remindersRuleListScrollBox.ScrollBar then
+        remindersRuleListScrollBox.ScrollBar:ClearAllPoints()
+        remindersRuleListScrollBox.ScrollBar:SetPoint("TOPRIGHT", remindersRuleListScrollBox, "TOPRIGHT", -4, -8)
+        remindersRuleListScrollBox.ScrollBar:SetPoint("BOTTOMRIGHT", remindersRuleListScrollBox, "BOTTOMRIGHT", -4, 8)
+    end
+    remindersRuleListScrollBox:OnSizeChanged()
+
+    remindersFormPanel = CreateFrame("Frame", nil, remindersDetailsFrame, "BackdropTemplate")
+    remindersFormPanel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 16, 0)
+    remindersFormPanel:SetPoint("BOTTOMRIGHT", remindersDetailsFrame, "BOTTOMRIGHT", -12, 12)
+    remindersFormPanel:SetBackdrop({
+        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
+        edgeFile = [[Interface\Buttons\WHITE8X8]],
+        edgeSize = 1,
+        tile = true,
+        tileSize = 64,
+    })
+    remindersFormPanel:SetBackdropColor(0.05, 0.05, 0.07, 0.55)
+    remindersFormPanel:SetBackdropBorderColor(0.18, 0.18, 0.22, 0.9)
+
+    remindersFormHeaderLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    remindersFormHeaderLabel:SetPoint("TOPLEFT", remindersFormPanel, "TOPLEFT", 12, -10)
+    remindersFormHeaderLabel:SetText("Reminder Settings")
+    remindersFormHeaderLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local reminderNameLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    reminderNameLabel:SetPoint("TOPLEFT", remindersFormHeaderLabel, "BOTTOMLEFT", 0, -12)
+    reminderNameLabel:SetText("Reminder Name")
+    reminderNameLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersRuleNameTextBox = framework:CreateTextEntry(remindersFormPanel, function() end, REMINDER_FORM_WIDTH, 28, nil, "APRaidUtilsReminderRuleNameTextBox", nil, framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
+    remindersRuleNameTextBox:SetPoint("TOPLEFT", reminderNameLabel, "BOTTOMLEFT", 0, -8)
+    remindersRuleNameTextBox:SetAutoFocus(false)
+    remindersRuleNameTextBox:SetText("")
+
+    local reminderTextLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    reminderTextLabel:SetPoint("TOPLEFT", remindersRuleNameTextBox.widget, "BOTTOMLEFT", 0, -12)
+    reminderTextLabel:SetText("Reminder Text")
+    reminderTextLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersRuleTextBox = framework:CreateTextEntry(remindersFormPanel, function() end, REMINDER_FORM_WIDTH, 28, nil, "APRaidUtilsReminderRuleTextBox", nil, framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
+    remindersRuleTextBox:SetPoint("TOPLEFT", reminderTextLabel, "BOTTOMLEFT", 0, -8)
+    remindersRuleTextBox:SetAutoFocus(false)
+    remindersRuleTextBox:SetText("")
+
+    remindersHelpLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersHelpLabel:SetPoint("TOPLEFT", remindersRuleTextBox.widget, "BOTTOMLEFT", -6, -6)
+    remindersHelpLabel:SetPoint("TOPRIGHT", remindersFormPanel, "TOPRIGHT", -12, 0)
+    remindersHelpLabel:SetJustifyH("LEFT")
+    remindersHelpLabel:SetWidth(REMINDER_FORM_WIDTH)
+    remindersHelpLabel:SetWordWrap(true)
+    remindersHelpLabel:SetText("Placeholders: {countdown}, {spell}, {boss}")
+    remindersHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
+
+    local timingLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    timingLabel:SetPoint("TOPLEFT", remindersHelpLabel, "BOTTOMLEFT", 0, -12)
+    timingLabel:SetText("Trigger Settings")
+    timingLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersTimingRow = CreateFrame("Frame", nil, remindersFormPanel)
+    remindersTimingRow:SetPoint("TOPLEFT", timingLabel, "BOTTOMLEFT", 0, -8)
+    remindersTimingRow:SetSize(REMINDER_FORM_WIDTH, 58)
+
+    local triggerFieldLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    triggerFieldLabel:SetPoint("TOPLEFT", remindersTimingRow, "TOPLEFT", 0, 0)
+    triggerFieldLabel:SetText("Seconds Left")
+    triggerFieldLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    remindersTriggerSecondsTextBox = framework:CreateTextEntry(remindersFormPanel, function() end, 78, 28, nil, "APRaidUtilsReminderTriggerSecondsTextBox", nil, framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
+    remindersTriggerSecondsTextBox:SetPoint("TOPLEFT", triggerFieldLabel, "BOTTOMLEFT", 0, -6)
+    remindersTriggerSecondsTextBox:SetAutoFocus(false)
+    remindersTriggerSecondsTextBox:SetText("0")
+
+    local triggerSecondsSuffix = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    triggerSecondsSuffix:SetPoint("TOPLEFT", remindersTriggerSecondsTextBox.widget, "BOTTOMLEFT", 0, -4)
+    triggerSecondsSuffix:SetText("0 = on start")
+    triggerSecondsSuffix:SetTextColor(0.65, 0.65, 0.7, 1)
+
+    local occurrenceFieldLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    occurrenceFieldLabel:SetPoint("TOPLEFT", remindersTimingRow, "TOPLEFT", 182, 0)
+    occurrenceFieldLabel:SetText("Occurrence")
+    occurrenceFieldLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    remindersOccurrenceTextBox = framework:CreateTextEntry(remindersFormPanel, function() end, 78, 28, nil, "APRaidUtilsReminderOccurrenceTextBox", nil, framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
+    remindersOccurrenceTextBox:SetPoint("TOPLEFT", occurrenceFieldLabel, "BOTTOMLEFT", 0, -6)
+    remindersOccurrenceTextBox:SetAutoFocus(false)
+    remindersOccurrenceTextBox:SetText("0")
+
+    local occurrenceSuffix = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    occurrenceSuffix:SetPoint("TOPLEFT", remindersOccurrenceTextBox.widget, "BOTTOMLEFT", 0, -4)
+    occurrenceSuffix:SetText("0 = every time")
+    occurrenceSuffix:SetTextColor(0.65, 0.65, 0.7, 1)
+
+    remindersPhaseLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    remindersPhaseLabel:SetPoint("TOPLEFT", remindersTimingRow, "BOTTOMLEFT", 0, -8)
+    remindersPhaseLabel:SetText("Phases")
+    remindersPhaseLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersPhaseDropdownButton = framework:CreateButton(remindersFormPanel, function()
+        if not remindersPhaseDropdownMenu then
+            return
+        end
+
+        if remindersPhaseDropdownMenu:IsShown() then
+            remindersPhaseDropdownMenu:Hide()
+        else
+            ReanchorReminderPhaseDropdownMenu()
+            remindersPhaseDropdownMenu:Show()
+        end
+    end, REMINDER_FORM_WIDTH, 24, "All phases")
+    remindersPhaseDropdownButton:SetPoint("TOPLEFT", remindersPhaseLabel, "BOTTOMLEFT", 0, -8)
+    remindersPhaseDropdownButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    remindersPhaseDropdownMenu = CreateFrame("Frame", nil, remindersFormPanel, "BackdropTemplate")
+    remindersPhaseDropdownMenu:SetPoint("TOPLEFT", remindersPhaseDropdownButton.widget, "BOTTOMLEFT", 0, -4)
+    remindersPhaseDropdownMenu:SetWidth(REMINDER_FORM_WIDTH)
+    remindersPhaseDropdownMenu:SetHeight(34)
+    remindersPhaseDropdownMenu:SetFrameStrata("DIALOG")
+    remindersPhaseDropdownMenu:SetBackdrop({ bgFile = [[Interface\Tooltips\UI-Tooltip-Background]], edgeFile = [[Interface\Buttons\WHITE8X8]], edgeSize = 1, tile = true, tileSize = 64 })
+    remindersPhaseDropdownMenu:SetBackdropColor(0.05, 0.05, 0.07, 0.96)
+    remindersPhaseDropdownMenu:SetBackdropBorderColor(0.18, 0.18, 0.22, 0.95)
+    remindersPhaseDropdownMenu:Hide()
+
+    remindersPhaseDropdownEmptyLabel = remindersPhaseDropdownMenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersPhaseDropdownEmptyLabel:SetPoint("TOPLEFT", remindersPhaseDropdownMenu, "TOPLEFT", 12, -12)
+    remindersPhaseDropdownEmptyLabel:SetPoint("TOPRIGHT", remindersPhaseDropdownMenu, "TOPRIGHT", -12, -12)
+    remindersPhaseDropdownEmptyLabel:SetJustifyH("LEFT")
+    remindersPhaseDropdownEmptyLabel:SetWordWrap(true)
+    remindersPhaseDropdownEmptyLabel:SetTextColor(0.65, 0.65, 0.7, 1)
+    remindersPhaseDropdownEmptyLabel:SetText("No phase data available for this timer yet")
+
+    remindersOutputsLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    remindersOutputsLabel:SetPoint("TOPLEFT", remindersPhaseDropdownButton.widget, "BOTTOMLEFT", 0, -12)
+    remindersOutputsLabel:SetText("Outputs")
+    remindersOutputsLabel:SetTextColor(1, 0.82, 0, 1)
+
+    remindersShowBarCheckbox, _ = framework:CreateSwitch(remindersFormPanel, HandleReminderOutputToggle, false, 20, 20, nil, nil, nil, "$parentShowBarCheckbox")
+    remindersShowBarCheckbox:SetAsCheckBox()
+    remindersShowBarCheckbox:SetPoint("TOPLEFT", remindersOutputsLabel, "BOTTOMLEFT", 0, -8)
+    remindersShowBarCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+    local remindersShowBarLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersShowBarLabel:SetPoint("LEFT", remindersShowBarCheckbox.widget, "RIGHT", 6, 0)
+    remindersShowBarLabel:SetText("Show custom bar")
+    remindersShowBarCheckbox:CreateExtraSpaceToClick(remindersShowBarLabel, 100)
+
+    remindersShowCountdownCheckbox, _ = framework:CreateSwitch(remindersFormPanel, HandleReminderOutputToggle, false, 20, 20, nil, nil, nil, "$parentShowCountdownCheckbox")
+    remindersShowCountdownCheckbox:SetAsCheckBox()
+    remindersShowCountdownCheckbox:SetPoint("TOPLEFT", remindersShowBarCheckbox, "BOTTOMLEFT", 0, -8)
+    remindersShowCountdownCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+    local remindersShowCountdownLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersShowCountdownLabel:SetPoint("LEFT", remindersShowCountdownCheckbox.widget, "RIGHT", 6, 0)
+    remindersShowCountdownLabel:SetText("Show countdown")
+    remindersShowCountdownCheckbox:CreateExtraSpaceToClick(remindersShowCountdownLabel, 110)
+
+    remindersSaveButton = framework:CreateButton(remindersFormPanel, SaveReminderRuleFromUI, 120, 22, "Save Reminder")
+    remindersSaveButton:SetPoint("TOPLEFT", remindersShowCountdownCheckbox, "BOTTOMLEFT", 0, -12)
+    remindersSaveButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    remindersDeleteRuleButton = framework:CreateButton(remindersFormPanel, DeleteReminderRuleFromUI, 120, 22, "Delete Reminder")
+    remindersDeleteRuleButton:SetPoint("LEFT", remindersSaveButton.widget, "RIGHT", 10, 0)
+    remindersDeleteRuleButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    remindersRuleStatusLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remindersRuleStatusLabel:SetPoint("TOPLEFT", remindersSaveButton.widget, "BOTTOMLEFT", 0, -10)
+    remindersRuleStatusLabel:SetPoint("TOPRIGHT", remindersFormPanel, "TOPRIGHT", -12, 0)
+    remindersRuleStatusLabel:SetWidth(REMINDER_FORM_WIDTH)
+    remindersRuleStatusLabel:SetJustifyH("LEFT")
+    remindersRuleStatusLabel:SetJustifyV("TOP")
+    remindersRuleStatusLabel:SetWordWrap(true)
+    remindersRuleStatusLabel:SetTextColor(0.85, 0.85, 0.85, 1)
+
+    remindersFormPanel:SetScript("OnSizeChanged", UpdateReminderEditorFormLayout)
+    UpdateReminderEditorFormLayout()
+end
+
 local function BuildVersionsTab(framework, parent)
     versionsTab = parent
 
@@ -1072,11 +1688,8 @@ local function BuildRemindersTab(framework, parent)
     local anchor = CreateBodyAnchor(parent)
     local titleLabel = CreateSectionLabel(parent, anchor, "BigWigs Reminders")
 
-    remindersStatusLabel = CreateWrappedText(parent, "", titleLabel, -10, FULL_CONTENT_WIDTH, 0.8, 0.8, 1)
-    remindersPlaceholderLabel = CreateWrappedText(parent, "", remindersStatusLabel, -10, FULL_CONTENT_WIDTH, 1, 0.82, 0)
-
     local contentAnchor = CreateFrame("Frame", "$parentRemindersContentAnchor", parent)
-    contentAnchor:SetPoint("TOPLEFT", remindersPlaceholderLabel, "BOTTOMLEFT", 0, -18)
+    contentAnchor:SetPoint("TOPLEFT", titleLabel, "BOTTOMLEFT", 0, -10)
     contentAnchor:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, 0)
     contentAnchor:SetHeight(1)
 
@@ -1097,13 +1710,6 @@ local function BuildRemindersTab(framework, parent)
     observedHeader:SetPoint("TOPLEFT", remindersBrowserFrame, "TOPLEFT", 10, -10)
     observedHeader:SetText("BigWigs Timers")
     observedHeader:SetTextColor(1, 0.82, 0, 1)
-
-    local observedSubtitle = remindersBrowserFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    observedSubtitle:SetPoint("TOPLEFT", observedHeader, "BOTTOMLEFT", 0, -4)
-    observedSubtitle:SetPoint("TOPRIGHT", remindersBrowserFrame, "TOPRIGHT", -12, -14)
-    observedSubtitle:SetJustifyH("LEFT")
-    observedSubtitle:SetText("Load a raid, then use Go To on any timer row to open its dedicated reminder page.")
-    observedSubtitle:SetTextColor(0.72, 0.72, 0.78, 1)
 
     remindersRaidDropdown = framework:CreateDropDown(
         remindersBrowserFrame,
@@ -1133,7 +1739,7 @@ local function BuildRemindersTab(framework, parent)
         "$parentRemindersRaidDropdown",
         framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
     )
-    remindersRaidDropdown:SetPoint("TOPLEFT", observedSubtitle, "BOTTOMLEFT", 0, -10)
+    remindersRaidDropdown:SetPoint("TOPLEFT", observedHeader, "BOTTOMLEFT", 0, -10)
     remindersRaidDropdown:SetEmptyTextAndIcon("No BigWigs raids", [[Interface\MINIMAP\TRACKING\Target]])
 
     remindersBossDropdown = framework:CreateDropDown(
@@ -1245,269 +1851,7 @@ local function BuildRemindersTab(framework, parent)
     end
     remindersObservedScrollBox:OnSizeChanged()
 
-    remindersDetailsFrame = CreateFrame("Frame", "$parentReminderEditorPanel", parent, "BackdropTemplate")
-    remindersDetailsFrame:SetPoint("TOPLEFT", contentAnchor, "TOPLEFT", 0, 0)
-    remindersDetailsFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 20)
-    remindersDetailsFrame:SetBackdrop({
-        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
-        edgeFile = [[Interface\Buttons\WHITE8X8]],
-        edgeSize = 1,
-        tile = true,
-        tileSize = 64,
-    })
-    remindersDetailsFrame:SetBackdropColor(0.08, 0.08, 0.1, 0.35)
-    remindersDetailsFrame:SetBackdropBorderColor(0.2, 0.2, 0.24, 0.9)
-    remindersDetailsFrame:Hide()
-
-    remindersEditorBackButton = framework:CreateButton(remindersDetailsFrame, ReturnToReminderBrowserPage, 100, 22, "Back")
-    remindersEditorBackButton:SetPoint("TOPLEFT", remindersDetailsFrame, "TOPLEFT", 10, -10)
-    remindersEditorBackButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
-
-    remindersEditorHeaderLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    remindersEditorHeaderLabel:SetPoint("LEFT", remindersEditorBackButton.widget, "RIGHT", 12, 0)
-    remindersEditorHeaderLabel:SetText("Timer Reminders")
-    remindersEditorHeaderLabel:SetTextColor(1, 0.82, 0, 1)
-
-    remindersDetailsLabel = remindersDetailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    remindersDetailsLabel:SetPoint("TOPLEFT", remindersEditorBackButton.widget, "BOTTOMLEFT", 0, -12)
-    remindersDetailsLabel:SetPoint("TOPRIGHT", remindersDetailsFrame, "TOPRIGHT", -12, -22)
-    remindersDetailsLabel:SetJustifyH("LEFT")
-    remindersDetailsLabel:SetJustifyV("TOP")
-    remindersDetailsLabel:SetTextColor(0.85, 0.85, 0.85, 1)
-    remindersDetailsLabel:SetWidth(FULL_CONTENT_WIDTH - 20)
-    remindersDetailsLabel:SetWordWrap(true)
-
-    local listPanel = CreateFrame("Frame", nil, remindersDetailsFrame, "BackdropTemplate")
-    listPanel:SetPoint("TOPLEFT", remindersDetailsLabel, "BOTTOMLEFT", 0, -12)
-    listPanel:SetPoint("BOTTOMLEFT", remindersDetailsFrame, "BOTTOMLEFT", 12, 12)
-    listPanel:SetWidth(REMINDER_LIST_PANEL_WIDTH)
-    listPanel:SetBackdrop({
-        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
-        edgeFile = [[Interface\Buttons\WHITE8X8]],
-        edgeSize = 1,
-        tile = true,
-        tileSize = 64,
-    })
-    listPanel:SetBackdropColor(0.05, 0.05, 0.07, 0.55)
-    listPanel:SetBackdropBorderColor(0.18, 0.18, 0.22, 0.9)
-
-    local reminderListHeaderFrame = CreateFrame("Frame", nil, listPanel)
-    reminderListHeaderFrame:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 10, -10)
-    reminderListHeaderFrame:SetPoint("TOPRIGHT", listPanel, "TOPRIGHT", -10, -10)
-    reminderListHeaderFrame:SetHeight(22)
-
-    remindersRuleListHeaderLabel = listPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    remindersRuleListHeaderLabel:SetPoint("LEFT", reminderListHeaderFrame, "LEFT", 0, 0)
-    remindersRuleListHeaderLabel:SetText("Saved Reminders")
-    remindersRuleListHeaderLabel:SetTextColor(1, 0.82, 0, 1)
-
-    remindersAddRuleButton = framework:CreateButton(listPanel, StartNewReminderRule, 110, 22, "Add Reminder")
-    remindersAddRuleButton:SetPoint("RIGHT", reminderListHeaderFrame, "RIGHT", 0, 0)
-    remindersAddRuleButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
-
-    remindersRuleListScrollBox = framework:CreateScrollBox(
-        listPanel,
-        "$parentRemindersRuleListScrollBox",
-        RefreshReminderRuleLines,
-        {},
-        1,
-        1,
-        1,
-        REMINDER_RULE_ROW_HEIGHT,
-        CreateReminderRuleLine,
-        true
-    )
-    remindersRuleListScrollBox:SetPoint("TOPLEFT", reminderListHeaderFrame, "BOTTOMLEFT", 0, -8)
-    remindersRuleListScrollBox:SetPoint("BOTTOMRIGHT", listPanel, "BOTTOMRIGHT", -10, 10)
-    framework:ReskinSlider(remindersRuleListScrollBox)
-    if remindersRuleListScrollBox.ScrollBar then
-        remindersRuleListScrollBox.ScrollBar:ClearAllPoints()
-        remindersRuleListScrollBox.ScrollBar:SetPoint("TOPRIGHT", remindersRuleListScrollBox, "TOPRIGHT", -4, -8)
-        remindersRuleListScrollBox.ScrollBar:SetPoint("BOTTOMRIGHT", remindersRuleListScrollBox, "BOTTOMRIGHT", -4, 8)
-    end
-    remindersRuleListScrollBox:OnSizeChanged()
-
-    local formPanel = CreateFrame("Frame", nil, remindersDetailsFrame, "BackdropTemplate")
-    formPanel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 16, 0)
-    formPanel:SetPoint("BOTTOMRIGHT", remindersDetailsFrame, "BOTTOMRIGHT", -12, 12)
-    formPanel:SetBackdrop({
-        bgFile = [[Interface\Tooltips\UI-Tooltip-Background]],
-        edgeFile = [[Interface\Buttons\WHITE8X8]],
-        edgeSize = 1,
-        tile = true,
-        tileSize = 64,
-    })
-    formPanel:SetBackdropColor(0.05, 0.05, 0.07, 0.55)
-    formPanel:SetBackdropBorderColor(0.18, 0.18, 0.22, 0.9)
-
-    remindersFormHeaderLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    remindersFormHeaderLabel:SetPoint("TOPLEFT", formPanel, "TOPLEFT", 12, -10)
-    remindersFormHeaderLabel:SetText("Reminder Settings")
-    remindersFormHeaderLabel:SetTextColor(1, 0.82, 0, 1)
-
-    local reminderNameLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    reminderNameLabel:SetPoint("TOPLEFT", remindersFormHeaderLabel, "BOTTOMLEFT", 0, -12)
-    reminderNameLabel:SetText("Reminder Name")
-    reminderNameLabel:SetTextColor(1, 0.82, 0, 1)
-
-    remindersRuleNameTextBox = framework:CreateTextEntry(
-        formPanel,
-        function() end,
-        REMINDER_FORM_WIDTH,
-        28,
-        nil,
-        "APRaidUtilsReminderRuleNameTextBox",
-        nil,
-        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
-    )
-    remindersRuleNameTextBox:SetPoint("TOPLEFT", reminderNameLabel, "BOTTOMLEFT", 0, -8)
-    remindersRuleNameTextBox:SetAutoFocus(false)
-    remindersRuleNameTextBox:SetText("")
-
-    local reminderTextLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    reminderTextLabel:SetPoint("TOPLEFT", remindersRuleNameTextBox.widget, "BOTTOMLEFT", 0, -12)
-    reminderTextLabel:SetText("Reminder Text")
-    reminderTextLabel:SetTextColor(1, 0.82, 0, 1)
-
-    remindersRuleTextBox = framework:CreateTextEntry(
-        formPanel,
-        function() end,
-        REMINDER_FORM_WIDTH,
-        28,
-        nil,
-        "APRaidUtilsReminderRuleTextBox",
-        nil,
-        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
-    )
-    remindersRuleTextBox:SetPoint("TOPLEFT", reminderTextLabel, "BOTTOMLEFT", 0, -8)
-    remindersRuleTextBox:SetAutoFocus(false)
-    remindersRuleTextBox:SetText("")
-
-    local reminderHelpLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    reminderHelpLabel:SetPoint("TOPLEFT", remindersRuleTextBox.widget, "BOTTOMLEFT", -6, -6)
-    reminderHelpLabel:SetPoint("TOPRIGHT", formPanel, "TOPRIGHT", -12, 0)
-    reminderHelpLabel:SetJustifyH("LEFT")
-    reminderHelpLabel:SetWidth(REMINDER_FORM_WIDTH)
-    reminderHelpLabel:SetWordWrap(true)
-    reminderHelpLabel:SetText("Placeholders: {countdown}, {spell}, {boss}")
-    reminderHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
-
-    local timingLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    timingLabel:SetPoint("TOPLEFT", reminderHelpLabel, "BOTTOMLEFT", 0, -12)
-    timingLabel:SetText("Trigger Settings")
-    timingLabel:SetTextColor(1, 0.82, 0, 1)
-
-    local timingRow = CreateFrame("Frame", nil, formPanel)
-    timingRow:SetPoint("TOPLEFT", timingLabel, "BOTTOMLEFT", 0, -8)
-    timingRow:SetSize(REMINDER_FORM_WIDTH, 58)
-
-    local triggerFieldLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    triggerFieldLabel:SetPoint("TOPLEFT", timingRow, "TOPLEFT", 0, 0)
-    triggerFieldLabel:SetText("Seconds Left")
-    triggerFieldLabel:SetTextColor(0.9, 0.9, 0.9, 1)
-
-    remindersTriggerSecondsTextBox = framework:CreateTextEntry(
-        formPanel,
-        function() end,
-        78,
-        28,
-        nil,
-        "APRaidUtilsReminderTriggerSecondsTextBox",
-        nil,
-        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
-    )
-    remindersTriggerSecondsTextBox:SetPoint("TOPLEFT", triggerFieldLabel, "BOTTOMLEFT", 0, -6)
-    remindersTriggerSecondsTextBox:SetAutoFocus(false)
-    remindersTriggerSecondsTextBox:SetText("0")
-
-    local triggerSecondsSuffix = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    triggerSecondsSuffix:SetPoint("TOPLEFT", remindersTriggerSecondsTextBox.widget, "BOTTOMLEFT", 0, -4)
-    triggerSecondsSuffix:SetText("0 = on start")
-    triggerSecondsSuffix:SetTextColor(0.65, 0.65, 0.7, 1)
-
-    local occurrenceFieldLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    occurrenceFieldLabel:SetPoint("TOPLEFT", timingRow, "TOPLEFT", 182, 0)
-    occurrenceFieldLabel:SetText("Occurrence")
-    occurrenceFieldLabel:SetTextColor(0.9, 0.9, 0.9, 1)
-
-    remindersOccurrenceTextBox = framework:CreateTextEntry(
-        formPanel,
-        function() end,
-        78,
-        28,
-        nil,
-        "APRaidUtilsReminderOccurrenceTextBox",
-        nil,
-        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
-    )
-    remindersOccurrenceTextBox:SetPoint("TOPLEFT", occurrenceFieldLabel, "BOTTOMLEFT", 0, -6)
-    remindersOccurrenceTextBox:SetAutoFocus(false)
-    remindersOccurrenceTextBox:SetText("0")
-
-    local occurrenceSuffix = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    occurrenceSuffix:SetPoint("TOPLEFT", remindersOccurrenceTextBox.widget, "BOTTOMLEFT", 0, -4)
-    occurrenceSuffix:SetText("0 = every time")
-    occurrenceSuffix:SetTextColor(0.65, 0.65, 0.7, 1)
-
-    local outputsLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    outputsLabel:SetPoint("TOPLEFT", timingRow, "BOTTOMLEFT", 0, -8)
-    outputsLabel:SetText("Outputs")
-    outputsLabel:SetTextColor(1, 0.82, 0, 1)
-
-    remindersShowBarCheckbox, _ = framework:CreateSwitch(
-        formPanel,
-        HandleReminderOutputToggle,
-        false,
-        20,
-        20,
-        nil,
-        nil,
-        nil,
-        "$parentShowBarCheckbox"
-    )
-    remindersShowBarCheckbox:SetAsCheckBox()
-    remindersShowBarCheckbox:SetPoint("TOPLEFT", outputsLabel, "BOTTOMLEFT", 0, -8)
-    remindersShowBarCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
-    local remindersShowBarLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    remindersShowBarLabel:SetPoint("LEFT", remindersShowBarCheckbox.widget, "RIGHT", 6, 0)
-    remindersShowBarLabel:SetText("Show custom bar")
-    remindersShowBarCheckbox:CreateExtraSpaceToClick(remindersShowBarLabel, 100)
-
-    remindersShowCountdownCheckbox, _ = framework:CreateSwitch(
-        formPanel,
-        HandleReminderOutputToggle,
-        false,
-        20,
-        20,
-        nil,
-        nil,
-        nil,
-        "$parentShowCountdownCheckbox"
-    )
-    remindersShowCountdownCheckbox:SetAsCheckBox()
-    remindersShowCountdownCheckbox:SetPoint("LEFT", remindersShowBarLabel, "RIGHT", 26, 0)
-    remindersShowCountdownCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
-    local remindersShowCountdownLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    remindersShowCountdownLabel:SetPoint("LEFT", remindersShowCountdownCheckbox.widget, "RIGHT", 6, 0)
-    remindersShowCountdownLabel:SetText("Show countdown")
-    remindersShowCountdownCheckbox:CreateExtraSpaceToClick(remindersShowCountdownLabel, 110)
-
-    local saveButton = framework:CreateButton(formPanel, SaveReminderRuleFromUI, 120, 22, "Save Reminder")
-    saveButton:SetPoint("TOPLEFT", remindersShowBarCheckbox, "BOTTOMLEFT", 0, -12)
-    saveButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
-
-    remindersDeleteRuleButton = framework:CreateButton(formPanel, DeleteReminderRuleFromUI, 120, 22, "Delete Reminder")
-    remindersDeleteRuleButton:SetPoint("LEFT", saveButton.widget, "RIGHT", 10, 0)
-    remindersDeleteRuleButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
-
-    remindersRuleStatusLabel = formPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    remindersRuleStatusLabel:SetPoint("TOPLEFT", saveButton.widget, "BOTTOMLEFT", 0, -10)
-    remindersRuleStatusLabel:SetPoint("TOPRIGHT", formPanel, "TOPRIGHT", -12, 0)
-    remindersRuleStatusLabel:SetWidth(REMINDER_FORM_WIDTH)
-    remindersRuleStatusLabel:SetJustifyH("LEFT")
-    remindersRuleStatusLabel:SetJustifyV("TOP")
-    remindersRuleStatusLabel:SetWordWrap(true)
-    remindersRuleStatusLabel:SetTextColor(0.85, 0.85, 0.85, 1)
+    BuildReminderEditorSection(framework, parent, contentAnchor)
 
     parent.RefreshOptions = function()
         AP:RefreshRemindersTab()
@@ -1527,7 +1871,7 @@ local function BuildMainWindow()
         return mainWindow
     end
 
-    mainWindow = framework:CreateSimplePanel(UIParent, 1220, 700, "APRaidUtils", "APRaidUtilsMainWindow", {
+    mainWindow = framework:CreateSimplePanel(UIParent, 1220, 780, "APRaidUtils", "APRaidUtilsMainWindow", {
         UseStatusBar = true,
         DontRightClickClose = true,
     })
@@ -1536,7 +1880,7 @@ local function BuildMainWindow()
 
     mainTabs = framework:CreateTabContainer(mainWindow, "APRaidUtils", "APRaidUtilsMainTabs", tabList, {
         width = 1196,
-        height = 660,
+        height = 740,
         backdrop_color = { 0.06, 0.06, 0.08, 0.94 },
         backdrop_border_color = { 0.2, 0.2, 0.24, 0.9 },
         hide_click_label = true,
@@ -1632,14 +1976,6 @@ function AP:RefreshRemindersTab()
 
     if reminders.PrimeReminderData then
         reminders:PrimeReminderData(remindersSelectedRaidFilter)
-    end
-
-    if remindersStatusLabel and reminders.GetStatusText then
-        UpdateWrappedLabel(remindersStatusLabel, reminders:GetStatusText(), FULL_CONTENT_WIDTH)
-    end
-
-    if remindersPlaceholderLabel and reminders.GetPlaceholderLines then
-        UpdateWrappedLabel(remindersPlaceholderLabel, table.concat(reminders:GetPlaceholderLines(), "\n"), FULL_CONTENT_WIDTH)
     end
 
     if remindersRaidDropdown and reminders.GetRaidFilterItems then
@@ -1860,6 +2196,11 @@ function AP:RefreshRemindersTab()
             else
                 remindersOccurrenceTextBox:Disable()
             end
+        end
+
+        if remindersPhaseDropdownMenu then
+            RefreshReminderPhaseControls(remindersPhaseDropdownMenu, editorState)
+            RefreshReminderPhaseDropdown(editorState)
         end
 
         if remindersShowBarCheckbox then

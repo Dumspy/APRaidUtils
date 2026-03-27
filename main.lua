@@ -110,7 +110,6 @@ function APRaidUtils:OnInitialize()
     self.db = AceDB:New("APRaidUtilsDB", defaults, true)
     self:CleanupSimcData()
     Comms = self:GetModule("Comms")
-    self:SetupOptions()
     self:RegisterChatCommand("ap", "HandleChatCommand")
 
     self:Print("Loaded")
@@ -422,11 +421,6 @@ function APRaidUtils:SaveSimcExport(characterInfo, exportText)
 end
 
 function APRaidUtils:NotifyOptionsChanged()
-    local registry = LibStub("AceConfigRegistry-3.0", true)
-    if registry then
-        registry:NotifyChange("APRaidUtils")
-    end
-
     if self.RefreshSimcTab then
         self:RefreshSimcTab()
     end

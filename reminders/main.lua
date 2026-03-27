@@ -287,12 +287,247 @@ local function NormalizeHeaderText(headerValue)
     return nil
 end
 
+local function NormalizeStageValue(stage)
+    local numericStage = tonumber(stage)
+    if not numericStage or numericStage <= 0 then
+        return nil
+    end
+
+    return math.floor((numericStage * 100) + 0.5) / 100
+end
+
+local function IsFractionalStage(stage)
+    local normalizedStage = NormalizeStageValue(stage)
+    if not normalizedStage then
+        return false
+    end
+
+    local integerStage = math.floor(normalizedStage + 0.0001)
+    return math.abs(normalizedStage - integerStage) > 0.001
+end
+
+local function BuildPhaseTokenFromStage(stage)
+    local normalizedStage = NormalizeStageValue(stage)
+    if not normalizedStage then
+        return nil
+    end
+
+    if IsFractionalStage(normalizedStage) then
+        return string.format("intermission:%d", math.max(1, math.floor(normalizedStage)))
+    end
+
+    return string.format("stage:%d", math.floor(normalizedStage + 0.0001))
+end
+
+local function BuildPhaseLabelFromToken(token)
+    if type(token) ~= "string" or token == "" then
+        return nil
+    end
+
+    local stageNumber = token:match("^stage:(%d+)$")
+    if stageNumber then
+        return string.format("Stage %d", tonumber(stageNumber) or 0)
+    end
+
+    local intermissionNumber = token:match("^intermission:(%d+)$")
+    if intermissionNumber then
+        return string.format("Intermission %d", tonumber(intermissionNumber) or 0)
+    end
+
+    if token == "intermission:any" then
+        return "Intermission"
+    end
+
+    return token
+end
+
+local function GetPhaseTokenSortValue(token)
+    if type(token) ~= "string" then
+        return 9999
+    end
+
+    local stageNumber = tonumber(token:match("^stage:(%d+)$"))
+    if stageNumber then
+        return (stageNumber * 10)
+    end
+
+    local intermissionNumber = tonumber(token:match("^intermission:(%d+)$"))
+    if intermissionNumber then
+        return (intermissionNumber * 10) + 5
+    end
+
+    if token == "intermission:any" then
+        return 9995
+    end
+
+    return 9999
+end
+
+local function GetBigWigsCommonLocale()
+    if type(BigWigsAPI) ~= "table" or type(BigWigsAPI.GetLocale) ~= "function" then
+        return nil
+    end
+
+    local success, locale = pcall(BigWigsAPI.GetLocale, BigWigsAPI, "BigWigs: Common")
+    if success and type(locale) == "table" then
+        return locale
+    end
+
+    return nil
+end
+
+local function MatchCountHeader(headerText, template)
+    if type(headerText) ~= "string" or type(template) ~= "string" or template == "" then
+        return nil
+    end
+
+    for index = 1, 10 do
+        if headerText == string.format(template, index) then
+            return index
+        end
+    end
+
+    return nil
+end
+
+local function ParsePhaseHeaderValue(headerValue)
+    local headerText = NormalizeHeaderText(headerValue)
+    if not headerText or headerText == "" then
+        return nil
+    end
+
+    local commonLocale = GetBigWigsCommonLocale()
+    local stageNumber = MatchCountHeader(headerText, commonLocale and commonLocale.stage)
+        or MatchCountHeader(headerText, commonLocale and commonLocale.phase)
+        or MatchCountHeader(headerText, "Stage %d")
+        or MatchCountHeader(headerText, "Phase %d")
+    if stageNumber then
+        return {
+            headerText = headerText,
+            stageValue = stageNumber,
+            phaseToken = BuildPhaseTokenFromStage(stageNumber),
+        }
+    end
+
+    local intermissionNumber = nil
+    if commonLocale and type(commonLocale.count) == "string" and type(commonLocale.intermission) == "string" then
+        for index = 1, 10 do
+            if headerText == string.format(commonLocale.count, commonLocale.intermission, index) then
+                intermissionNumber = index
+                break
+            end
+        end
+    end
+
+    local lowerHeader = headerText:lower()
+    stageNumber = tonumber(lowerHeader:match("^stage%s+(%d+)$") or lowerHeader:match("^phase%s+(%d+)$"))
+    if stageNumber then
+        return {
+            headerText = headerText,
+            stageValue = stageNumber,
+            phaseToken = BuildPhaseTokenFromStage(stageNumber),
+        }
+    end
+
+    intermissionNumber = intermissionNumber or tonumber(lowerHeader:match("^intermission%s+(%d+)$") or lowerHeader:match("^intermission%s*%((%d+)%)$"))
+    if intermissionNumber then
+        local stageValue = intermissionNumber + 0.5
+        return {
+            headerText = headerText,
+            stageValue = stageValue,
+            phaseToken = BuildPhaseTokenFromStage(stageValue),
+        }
+    end
+
+    local intermissionLabel = commonLocale and NormalizeText(commonLocale.intermission):lower() or "intermission"
+    if lowerHeader == intermissionLabel or lowerHeader == "intermission" then
+        return {
+            headerText = headerText,
+            genericIntermission = true,
+            phaseToken = "intermission:any",
+        }
+    end
+
+    return {
+        headerText = headerText,
+    }
+end
+
+local function AddUniqueValue(target, value)
+    if type(target) ~= "table" or value == nil then
+        return false
+    end
+
+    for _, existingValue in ipairs(target) do
+        if existingValue == value then
+            return false
+        end
+    end
+
+    target[#target + 1] = value
+    return true
+end
+
+local function AddUniquePhaseMetadata(target, phaseData)
+    if type(target) ~= "table" or type(phaseData) ~= "table" then
+        return
+    end
+
+    target.headerTexts = target.headerTexts or {}
+    target.stageValues = target.stageValues or {}
+    target.phaseTokens = target.phaseTokens or {}
+
+    if phaseData.headerText and phaseData.headerText ~= "" then
+        AddUniqueValue(target.headerTexts, phaseData.headerText)
+    end
+
+    if phaseData.stageValue then
+        AddUniqueValue(target.stageValues, NormalizeStageValue(phaseData.stageValue))
+    end
+
+    if phaseData.phaseToken then
+        AddUniqueValue(target.phaseTokens, phaseData.phaseToken)
+    end
+
+    if phaseData.genericIntermission then
+        target.genericIntermission = true
+    end
+end
+
+local function BuildOptionPhaseMap(headerData)
+    local optionPhaseMap = {}
+
+    if type(headerData) ~= "table" then
+        return optionPhaseMap
+    end
+
+    for optionKey, headerValue in pairs(headerData) do
+        if type(optionKey) == "number" and type(headerValue) == "table" and type(headerValue.tabName) == "string" and type(headerValue[1]) == "table" then
+            local phaseData = ParsePhaseHeaderValue(headerValue.tabName)
+            for _, nestedOption in ipairs(headerValue[1]) do
+                local nestedOptionKey = type(nestedOption) == "table" and nestedOption[1] or nestedOption
+                optionPhaseMap[nestedOptionKey] = optionPhaseMap[nestedOptionKey] or {}
+                AddUniquePhaseMetadata(optionPhaseMap[nestedOptionKey], phaseData)
+            end
+        elseif type(optionKey) == "string" or type(optionKey) == "number" then
+            local phaseData = ParsePhaseHeaderValue(headerValue)
+            if phaseData then
+                optionPhaseMap[optionKey] = optionPhaseMap[optionKey] or {}
+                AddUniquePhaseMetadata(optionPhaseMap[optionKey], phaseData)
+            end
+        end
+    end
+
+    return optionPhaseMap
+end
+
 function Reminders:OnInitialize()
     self.activeReminders = {}
     self.pendingReminders = {}
     self.runtimeEventMap = {}
     self.pullCounts = {}
     self.loadedRaidIds = {}
+    self.currentStageByModule = {}
     self.bigWigsCallbacksRegistered = false
 end
 
@@ -438,6 +673,9 @@ function Reminders:EnsureBigWigsCallbacksRegistered()
     BigWigsLoader.RegisterMessage(self, "BigWigs_StopBars", "HandleBigWigsStopBars")
     BigWigsLoader.RegisterMessage(self, "BigWigs_PauseBar", "HandleBigWigsPauseBar")
     BigWigsLoader.RegisterMessage(self, "BigWigs_ResumeBar", "HandleBigWigsResumeBar")
+    BigWigsLoader.RegisterMessage(self, "BigWigs_SetStage", "HandleBigWigsSetStage")
+    BigWigsLoader.RegisterMessage(self, "BigWigs_OnBossEngage", "HandleBigWigsBossEngage")
+    BigWigsLoader.RegisterMessage(self, "BigWigs_OnBossEngageMidEncounter", "HandleBigWigsBossEngage")
     BigWigsLoader.RegisterMessage(self, "BigWigs_OnBossDisable", "HandleBigWigsBossDisable")
     self.bigWigsCallbacksRegistered = true
     return true
@@ -453,6 +691,9 @@ function Reminders:UnregisterBigWigsCallbacks()
     BigWigsLoader.UnregisterMessage(self, "BigWigs_StopBars")
     BigWigsLoader.UnregisterMessage(self, "BigWigs_PauseBar")
     BigWigsLoader.UnregisterMessage(self, "BigWigs_ResumeBar")
+    BigWigsLoader.UnregisterMessage(self, "BigWigs_SetStage")
+    BigWigsLoader.UnregisterMessage(self, "BigWigs_OnBossEngage")
+    BigWigsLoader.UnregisterMessage(self, "BigWigs_OnBossEngageMidEncounter")
     BigWigsLoader.UnregisterMessage(self, "BigWigs_OnBossDisable")
     self.bigWigsCallbacksRegistered = false
 end
@@ -554,14 +795,217 @@ function Reminders:StartReminderDisplayTimer()
     self.displayUpdateTimer = self:ScheduleRepeatingTimer("RefreshActiveReminderDisplay", 0.1)
 end
 
+function Reminders:GetCurrentStageForModule(module)
+    local moduleName = type(module) == "table" and module.moduleName or module
+    if type(moduleName) ~= "string" or moduleName == "" then
+        return nil
+    end
+
+    local currentStage = NormalizeStageValue(self.currentStageByModule[moduleName])
+    if currentStage then
+        return currentStage
+    end
+
+    if type(module) == "table" and module.GetStage then
+        currentStage = NormalizeStageValue(module:GetStage())
+        if currentStage then
+            self.currentStageByModule[moduleName] = currentStage
+            return currentStage
+        end
+    end
+
+    return nil
+end
+
+function Reminders:SetCurrentStageForModule(module, stage)
+    local moduleName = type(module) == "table" and module.moduleName or module
+    local normalizedStage = NormalizeStageValue(stage)
+    if type(moduleName) ~= "string" or moduleName == "" then
+        return nil
+    end
+
+    if normalizedStage then
+        self.currentStageByModule[moduleName] = normalizedStage
+    else
+        self.currentStageByModule[moduleName] = nil
+    end
+
+    return normalizedStage
+end
+
+function Reminders:GetRulePhaseFilterSet(rule)
+    local phaseFilterSet = {}
+    local hasFilters = false
+
+    if type(rule) ~= "table" or type(rule.phaseFilters) ~= "table" then
+        return phaseFilterSet, hasFilters
+    end
+
+    for _, phaseToken in ipairs(rule.phaseFilters) do
+        if type(phaseToken) == "string" and phaseToken ~= "" then
+            phaseFilterSet[phaseToken] = true
+            hasFilters = true
+        end
+    end
+
+    return phaseFilterSet, hasFilters
+end
+
+function Reminders:IsRuleAllowedInStage(rule, stage)
+    local phaseFilterSet, hasFilters = self:GetRulePhaseFilterSet(rule)
+    if not hasFilters then
+        return true
+    end
+
+    local normalizedStage = NormalizeStageValue(stage)
+    if not normalizedStage then
+        return false
+    end
+
+    local phaseToken = BuildPhaseTokenFromStage(normalizedStage)
+    if phaseToken and phaseFilterSet[phaseToken] then
+        return true
+    end
+
+    if IsFractionalStage(normalizedStage) and phaseFilterSet["intermission:any"] == true then
+        return true
+    end
+
+    return false
+end
+
+function Reminders:RecordDefinitionObservedStage(definitionId, stage)
+    local definition = self:GetDefinitionById(definitionId)
+    local normalizedStage = NormalizeStageValue(stage)
+    if not definition or not normalizedStage then
+        return
+    end
+
+    definition.observedStageValues = definition.observedStageValues or {}
+    AddUniqueValue(definition.observedStageValues, normalizedStage)
+end
+
+function Reminders:GetDefinitionPhaseOptions(definitionId)
+    local definition = self:GetDefinitionById(definitionId)
+    local seen = {}
+    local options = {}
+
+    if not definition then
+        return options
+    end
+
+    local function addPhaseToken(token)
+        if type(token) ~= "string" or token == "" or seen[token] then
+            return
+        end
+
+        seen[token] = true
+        options[#options + 1] = {
+            value = token,
+            label = BuildPhaseLabelFromToken(token) or token,
+            sortOrder = GetPhaseTokenSortValue(token),
+        }
+    end
+
+    for _, stageValue in ipairs(definition.phaseStageValues or {}) do
+        addPhaseToken(BuildPhaseTokenFromStage(stageValue))
+    end
+
+    for _, stageValue in ipairs(definition.observedStageValues or {}) do
+        addPhaseToken(BuildPhaseTokenFromStage(stageValue))
+    end
+
+    if definition.hasIntermissionHeader == true then
+        local hasExactIntermission = false
+        for token in pairs(seen) do
+            if token:match("^intermission:%d+$") then
+                hasExactIntermission = true
+                break
+            end
+        end
+        if not hasExactIntermission then
+            addPhaseToken("intermission:any")
+        end
+    end
+
+    table.sort(options, function(left, right)
+        if left.sortOrder ~= right.sortOrder then
+            return left.sortOrder < right.sortOrder
+        end
+
+        return tostring(left.label) < tostring(right.label)
+    end)
+
+    return options
+end
+
+function Reminders:GetRulePhaseSummary(rule, definitionId)
+    local phaseFilterSet, hasFilters = self:GetRulePhaseFilterSet(rule)
+    if not hasFilters then
+        return "All phases"
+    end
+
+    local labels = {}
+    local options = self:GetDefinitionPhaseOptions(definitionId or (rule and rule.definitionId))
+    for _, option in ipairs(options) do
+        if phaseFilterSet[option.value] then
+            labels[#labels + 1] = {
+                label = option.label,
+                sortOrder = option.sortOrder,
+            }
+            phaseFilterSet[option.value] = nil
+        end
+    end
+
+    for phaseToken in pairs(phaseFilterSet) do
+        labels[#labels + 1] = {
+            label = BuildPhaseLabelFromToken(phaseToken) or phaseToken,
+            sortOrder = GetPhaseTokenSortValue(phaseToken),
+        }
+    end
+
+    table.sort(labels, function(left, right)
+        if left.sortOrder ~= right.sortOrder then
+            return left.sortOrder < right.sortOrder
+        end
+
+        return left.label < right.label
+    end)
+
+    local parts = {}
+    for _, entry in ipairs(labels) do
+        parts[#parts + 1] = entry.label
+    end
+
+    return table.concat(parts, ", ")
+end
+
+function Reminders:PruneActiveRemindersForStage(moduleName, stage)
+    local removedAny = false
+
+    for runtimeKey, reminder in pairs(self.activeReminders) do
+        if reminder.moduleName == moduleName and not self:IsRuleAllowedInStage(reminder.rule, stage) then
+            self.activeReminders[runtimeKey] = nil
+            removedAny = true
+        end
+    end
+
+    if removedAny then
+        self:RefreshActiveReminderDisplay()
+    end
+end
+
 function Reminders:ClearRuntimeState(moduleName)
     if not moduleName then
         self.activeReminders = {}
         self.pendingReminders = {}
         self.runtimeEventMap = {}
+        self.currentStageByModule = {}
         self:RefreshActiveReminderDisplay()
         return
     end
+
+    self.currentStageByModule[moduleName] = nil
 
     for runtimeKey, reminder in pairs(self.activeReminders) do
         if reminder.moduleName == moduleName then
@@ -886,7 +1330,7 @@ function Reminders:IsTimerOptionSupported(module, optionKey)
     return IsPositiveNumber(optionKey)
 end
 
-function Reminders:BuildDefinitionFromOption(module, optionEntry, headerValue, easyNameOverride, optionOrder, bossOrder)
+function Reminders:BuildDefinitionFromOption(module, optionEntry, phaseMetadata, easyNameOverride, optionOrder, bossOrder)
     local optionKey = type(optionEntry) == "table" and optionEntry[1] or optionEntry
     if type(optionKey) ~= "string" and type(optionKey) ~= "number" then
         return nil
@@ -929,7 +1373,11 @@ function Reminders:BuildDefinitionFromOption(module, optionEntry, headerValue, e
     definition.spellId = spellId
     definition.fullName = NormalizeText(fullName ~= nil and fullName or (spellId and GetSpellNameSafe(spellId) or optionKey))
     definition.easyName = NormalizeText(easyName)
-    definition.headerText = NormalizeHeaderText(headerValue)
+    definition.headerText = phaseMetadata and phaseMetadata.headerTexts and phaseMetadata.headerTexts[1] or nil
+    definition.phaseHeaders = phaseMetadata and CopyTableDeep(phaseMetadata.headerTexts) or {}
+    definition.phaseStageValues = phaseMetadata and CopyTableDeep(phaseMetadata.stageValues) or {}
+    definition.hasIntermissionHeader = phaseMetadata and phaseMetadata.genericIntermission == true or false
+    definition.observedStageValues = definition.observedStageValues or {}
     definition.description = NormalizeText(description)
     definition.icon = icon
     definition.kind = spellId and "spell" or "option"
@@ -990,13 +1438,23 @@ function Reminders:RebuildDefinitionsForRaid(raidId)
             end
 
             local optionEntries = {}
-            local optionHeaders = {}
+            local optionPhases = {}
             local optionEasyNames = {}
 
-            if module.GetOptions then
+            if type(module.optionHeaders) == "table" then
+                optionPhases = BuildOptionPhaseMap(module.optionHeaders)
+            end
+
+            if type(module.toggleOptions) == "table" then
+                AppendOptionEntries(optionEntries, module.toggleOptions)
+            end
+
+            if #optionEntries == 0 and module.GetOptions then
                 local options = { module:GetOptions() }
                 AppendOptionEntries(optionEntries, options[1])
-                AppendOptionHeaderMap(optionHeaders, options[2])
+                if type(options[2]) == "table" and next(optionPhases) == nil then
+                    optionPhases = BuildOptionPhaseMap(options[2])
+                end
                 if type(options[3]) == "table" then
                     for optionKey, easyName in pairs(options[3]) do
                         optionEasyNames[optionKey] = easyName
@@ -1004,20 +1462,18 @@ function Reminders:RebuildDefinitionsForRaid(raidId)
                 end
             end
 
-            if #optionEntries == 0 then
-                AppendOptionEntries(optionEntries, module.toggleOptions)
+            if type(module.notes) == "table" then
+                for optionKey, easyName in pairs(module.notes) do
+                    optionEasyNames[optionKey] = easyName
+                end
             end
 
-            local currentHeaderValue = nil
             local optionOrder = 0
             for _, optionEntry in ipairs(optionEntries) do
                 optionOrder = optionOrder + 1
                 local optionKey = type(optionEntry) == "table" and optionEntry[1] or optionEntry
-                if optionHeaders[optionKey] ~= nil then
-                    currentHeaderValue = optionHeaders[optionKey]
-                end
 
-                local definition = self:BuildDefinitionFromOption(module, optionEntry, currentHeaderValue, optionEasyNames[optionKey], optionOrder, bossOrder)
+                local definition = self:BuildDefinitionFromOption(module, optionEntry, optionPhases[optionKey], optionEasyNames[optionKey], optionOrder, bossOrder)
                 if definition then
                     count = count + 1
                 end
@@ -1168,7 +1624,7 @@ function Reminders:GetDefinitionDetailLines(definitionId)
         }
     end
 
-    return {
+    local lines = {
         "Boss: " .. tostring(definition.bossName or "Unknown"),
         "Ability: " .. tostring(definition.fullName or "Unknown"),
         string.format(
@@ -1187,6 +1643,17 @@ function Reminders:GetDefinitionDetailLines(definitionId)
             self:GetRuleCountForDefinition(definitionId)
         ),
     }
+
+    local phaseOptions = self:GetDefinitionPhaseOptions(definitionId)
+    if #phaseOptions > 0 then
+        local labels = {}
+        for _, option in ipairs(phaseOptions) do
+            labels[#labels + 1] = option.label
+        end
+        lines[#lines + 1] = "Phases: " .. table.concat(labels, ", ")
+    end
+
+    return lines
 end
 
 function Reminders:ResolveDefinitionId(module, key, label)
@@ -1344,10 +1811,11 @@ function Reminders:BuildRuleListSummary(rule)
     end
 
     return string.format(
-        "%s | %s | %s",
+        "%s | %s | %s | %s",
         triggerText,
         occurrenceText,
-        #outputParts > 0 and table.concat(outputParts, "+") or "text"
+        #outputParts > 0 and table.concat(outputParts, "+") or "text",
+        self:GetRulePhaseSummary(rule, rule and rule.definitionId)
     )
 end
 
@@ -1380,6 +1848,11 @@ function Reminders:StartActiveReminder(definitionId, ruleId, module, label, dura
         return
     end
 
+    local currentStage = self:GetCurrentStageForModule(module)
+    if not self:IsRuleAllowedInStage(rule, currentStage) then
+        return
+    end
+
     local definition = self:GetDefinitionById(definitionId)
     local now = GetPreciseNow()
     local runtimeKey = self:BuildRuntimeInstanceKey(definitionId, ruleId)
@@ -1401,6 +1874,7 @@ function Reminders:StartActiveReminder(definitionId, ruleId, module, label, dura
         showCountdown = rule.showCountdown == true,
         occurrenceNumber = occurrenceNumber,
         eventId = eventId,
+        stage = currentStage,
         instanceMatchKey = instanceMatchKey,
         rule = rule,
     }
@@ -1442,6 +1916,7 @@ function Reminders:ActivateRuleForTimer(definitionId, module, label, duration, e
     local now = GetPreciseNow()
     local endTime = now + (duration or 0)
     local activatedAny = false
+    local currentStage = self:GetCurrentStageForModule(module)
 
     for _, rule in ipairs(rules) do
         if rule.enabled == true and self:IsRuleOccurrenceMatch(rule, occurrenceNumber) then
@@ -1461,6 +1936,7 @@ function Reminders:ActivateRuleForTimer(definitionId, module, label, duration, e
                     endTime = endTime,
                     eventId = eventId,
                     occurrence = occurrenceNumber,
+                    stage = currentStage,
                     secondsBeforeEnd = secondsBeforeEnd,
                     instanceMatchKey = self:BuildRuleInstanceMatchKey(module, label, eventId),
                 }
@@ -1514,11 +1990,31 @@ function Reminders:HandleBigWigsStartBar(_, module, key, text, barTime, icon, is
         definition.lastSeenAt = _G.time()
         definition.lastDuration = duration
         definition.icon = icon or definition.icon
+        self:RecordDefinitionObservedStage(definitionId, self:GetCurrentStageForModule(module))
     end
 
     self:UpdateLegacyObservedTimer(module, definitionId, text, duration, icon, eventId)
     self:ActivateRuleForTimer(definitionId, module, text, duration, eventId)
     self:RefreshUI()
+end
+
+function Reminders:HandleBigWigsBossEngage(_, module)
+    if type(module) ~= "table" then
+        return
+    end
+
+    self:SetCurrentStageForModule(module, module.GetStage and module:GetStage() or nil)
+end
+
+function Reminders:HandleBigWigsSetStage(_, module, stage)
+    if type(module) ~= "table" then
+        return
+    end
+
+    local currentStage = self:SetCurrentStageForModule(module, stage)
+    if currentStage then
+        self:PruneActiveRemindersForStage(module.moduleName, currentStage)
+    end
 end
 
 function Reminders:HandleBigWigsStopBar(_, module, text, eventId)
@@ -1541,6 +2037,7 @@ end
 
 function Reminders:HandleBigWigsBossDisable(_, module)
     self.pullCounts = {}
+    self:SetCurrentStageForModule(module, nil)
     self:HandleBigWigsStopBars(nil, module)
 end
 
@@ -1599,6 +2096,8 @@ function Reminders:GetRuleEditorState(definitionId, ruleId)
             occurrenceNumber = "0",
             showBar = false,
             showCountdown = false,
+            phaseOptions = {},
+            phaseFilters = {},
             statusText = "Select a BigWigs timer definition to create a reminder.",
         }
     end
@@ -1613,6 +2112,8 @@ function Reminders:GetRuleEditorState(definitionId, ruleId)
             occurrenceNumber = "0",
             showBar = false,
             showCountdown = false,
+            phaseOptions = self:GetDefinitionPhaseOptions(definitionId),
+            phaseFilters = {},
             statusText = #rules > 0 and "Configure a new reminder for this timer." or "No reminders saved for this timer yet. Click Add Reminder to create one.",
         }
     end
@@ -1626,6 +2127,8 @@ function Reminders:GetRuleEditorState(definitionId, ruleId)
         occurrenceNumber = tostring(rule.occurrenceNumber or 0),
         showBar = rule.showBar == true,
         showCountdown = rule.showCountdown == true,
+        phaseOptions = self:GetDefinitionPhaseOptions(definitionId),
+        phaseFilters = CopyTableDeep(rule.phaseFilters or {}),
         statusText = string.format("Reminder saved. Updated: %s", date("%Y-%m-%d %H:%M", rule.updatedAt or time())),
     }
 end
@@ -1663,6 +2166,27 @@ function Reminders:SaveRule(definitionId, ruleId, data)
     end
     occurrenceNumber = math.floor(occurrenceNumber + 0.0001)
 
+    local phaseFilters = {}
+    local phaseFilterSeen = {}
+    if type(data and data.phaseFilters) == "table" then
+        for _, phaseToken in ipairs(data.phaseFilters) do
+            if type(phaseToken) == "string" and phaseToken ~= "" and not phaseFilterSeen[phaseToken] then
+                phaseFilterSeen[phaseToken] = true
+                phaseFilters[#phaseFilters + 1] = phaseToken
+            end
+        end
+    end
+
+    table.sort(phaseFilters, function(left, right)
+        local leftSort = GetPhaseTokenSortValue(left)
+        local rightSort = GetPhaseTokenSortValue(right)
+        if leftSort ~= rightSort then
+            return leftSort < rightSort
+        end
+
+        return left < right
+    end)
+
     local bucket = self:GetRuleBucket(definitionId, true)
     local existingRule = ruleId and bucket.items[ruleId] or nil
     local enabled = true
@@ -1689,6 +2213,7 @@ function Reminders:SaveRule(definitionId, ruleId, data)
         occurrenceNumber = occurrenceNumber,
         showBar = data and data.showBar == true or false,
         showCountdown = data and data.showCountdown == true or false,
+        phaseFilters = phaseFilters,
         enabled = enabled,
         createdAt = existingRule and existingRule.createdAt or time(),
         updatedAt = time(),
