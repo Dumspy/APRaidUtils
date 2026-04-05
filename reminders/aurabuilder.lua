@@ -64,6 +64,21 @@ local function GetSpellNameSafe(spellId)
     return nil
 end
 
+local function PhaseTokenToStageNumber(token)
+    if type(token) ~= "string" or token == "" then
+        return nil
+    end
+    local stage = token:match("^stage:(%d+)$")
+    if stage then
+        return tonumber(stage)
+    end
+    local intermission = token:match("^intermission:(%d+)$")
+    if intermission then
+        return tonumber(intermission) + 0.5
+    end
+    return nil
+end
+
 function AuraBuilder:OnEnable()
 end
 
@@ -531,7 +546,19 @@ function AuraBuilder:BuildAuraData(rule, definition)
 
     aura.parent = definition.bossName or rule.bossName or "Unknown Boss"
 
-    aura.triggers = {
+    local stageNumbers = {}
+    for _, stageValue in ipairs(definition.phaseStageValues or {}) do
+        if stageValue <= 5.5 then
+            stageNumbers[stageValue] = true
+        end
+    end
+    for _, stageValue in ipairs(definition.observedStageValues or {}) do
+        if stageValue <= 5.5 and not stageNumbers[stageValue] then
+            stageNumbers[stageValue] = true
+        end
+    end
+
+    local triggers = {
         {
             trigger = {
                 type = "addons",
@@ -550,6 +577,37 @@ function AuraBuilder:BuildAuraData(rule, definition)
             untrigger = {},
         },
     }
+
+    local hasStageFilters = next(stageNumbers) ~= nil
+    if hasStageFilters then
+        local stageTriggerIndex = 2
+        local orParts = {}
+
+        for stage = 0.5, 5.5, 0.5 do
+            if stageNumbers[stage] then
+                triggers[stageTriggerIndex] = {
+                    trigger = {
+                        type = "addons",
+                        event = "Boss Mod Stage",
+                        use_stage = true,
+                        stage = tostring(stage),
+                        stage_operator = "==",
+                    },
+                    untrigger = {},
+                }
+                orParts[#orParts + 1] = string.format("t[%d]", stageTriggerIndex)
+                stageTriggerIndex = stageTriggerIndex + 1
+            end
+        end
+
+        triggers.disjunctive = "custom"
+        triggers.customTriggerLogic = string.format(
+            "function(t) return t[1] and (%s) end",
+            table.concat(orParts, " or ")
+        )
+    end
+
+    aura.triggers = triggers
 
     aura.load = {
         use_encounterid = true,
