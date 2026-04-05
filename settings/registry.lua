@@ -13,20 +13,8 @@ local function GetRemindersModule()
     return AP:GetModule("Reminders", true)
 end
 
-local function IsReminderPreviewModeEnabled()
-    local reminders = GetRemindersModule()
-    return reminders and reminders.IsPreviewMode and reminders:IsPreviewMode() or false
-end
-
-local function SetReminderPreviewMode(enabled)
-    local reminders = GetRemindersModule()
-    if reminders and reminders.SetPreviewMode then
-        reminders:SetPreviewMode(enabled)
-    end
-end
-
-local function ToggleReminderPreviewMode()
-    SetReminderPreviewMode(not IsReminderPreviewModeEnabled())
+local function GetAuraBuilderModule()
+    return AP:GetModule("AuraBuilder", true)
 end
 
 local function IsRemindersEnabled()
@@ -41,46 +29,21 @@ local function SetRemindersEnabled(value)
     end
 end
 
-local function GetReminderTextSizeValue()
-    local reminders = GetRemindersModule()
-    local storage = reminders and reminders.GetStorage and reminders:GetStorage() or nil
-    return storage and storage.display and storage.display.textSize or 28
-end
-
-local function SetReminderTextSizeValue(value)
-    local reminders = GetRemindersModule()
-    local storage = reminders and reminders.GetStorage and reminders:GetStorage() or nil
-    if storage and storage.display then
-        storage.display.textSize = value
-        if reminders.RefreshActiveReminderDisplay then
-            reminders:RefreshActiveReminderDisplay()
+local function GetM33kAurasStatusText()
+    local Reminders = GetRemindersModule()
+    if Reminders and Reminders.GetM33kAurasStatus then
+        local status, msg = Reminders:GetM33kAurasStatus()
+        if status == "missing" then
+            return "|cffff4444M33kAuras is not installed. Reminders require M33kAuras.|r"
+        elseif status == "missing_template" then
+            return "|cffffaa44M33kAuras installed but reminder template is missing. Create it in the Reminders tab.|r"
         end
-        if reminders.IsPreviewMode and reminders:IsPreviewMode() and reminders.SetPreviewMode then
-            reminders:SetPreviewMode(true)
-        end
-        AP:NotifyOptionsChanged()
     end
-end
-
-local function GetReminderMaxVisibleValue()
-    local reminders = GetRemindersModule()
-    local storage = reminders and reminders.GetStorage and reminders:GetStorage() or nil
-    return storage and storage.display and storage.display.maxVisible or 3
-end
-
-local function SetReminderMaxVisibleValue(value)
-    local reminders = GetRemindersModule()
-    local storage = reminders and reminders.GetStorage and reminders:GetStorage() or nil
-    if storage and storage.display then
-        storage.display.maxVisible = value
-        if reminders.RefreshActiveReminderDisplay then
-            reminders:RefreshActiveReminderDisplay()
-        end
-        if reminders.IsPreviewMode and reminders:IsPreviewMode() and reminders.SetPreviewMode then
-            reminders:SetPreviewMode(true)
-        end
-        AP:NotifyOptionsChanged()
+    local AuraBuilder = GetAuraBuilderModule()
+    if AuraBuilder and AuraBuilder:IsAvailable() then
+        return "|cff44ff44M33kAuras is installed and ready.|r"
     end
+    return "M33kAuras is not installed. Reminders require M33kAuras."
 end
 
 local function BuildCharacterItems()
@@ -134,7 +97,7 @@ local function GetSections()
                 {
                     id = "remindersIntro",
                     type = "description",
-                    text = "Configure APRaidUtils reminder behavior and use preview mode to position the runtime reminder anchor.",
+                    text = "Configure APRaidUtils reminder behavior. Reminders are imported as M33kAuras auras - customize their appearance via the APRaidUtils Reminder Template in M33kAuras.",
                     order = 1,
                     surfaces = {
                         ace = true,
@@ -145,13 +108,19 @@ local function GetSections()
                     },
                 },
                 {
+                    id = "m33kAurasStatus",
+                    type = "description",
+                    text = GetM33kAurasStatusText,
+                    order = 2,
+                },
+                {
                     id = "remindersEnabled",
                     type = "toggle",
                     name = "Enable reminders",
                     desc = "Turn APRaidUtils timer reminders on or off.",
                     get = IsRemindersEnabled,
                     set = SetRemindersEnabled,
-                    order = 2,
+                    order = 3,
                     ace = {
                         width = "full",
                     },
@@ -160,75 +129,31 @@ local function GetSections()
                     },
                 },
                 {
-                    id = "remindersPreviewDescription",
-                    type = "description",
-                    text = function()
-                        return IsReminderPreviewModeEnabled() and "Preview mode is active. Drag the on-screen anchor, then hide preview when finished." or "Preview mode is off."
+                    id = "autoImport",
+                    type = "toggle",
+                    name = "Auto-import pushed reminders",
+                    desc = "Automatically import reminders when they are pushed by your raid leader.",
+                    get = function()
+                        local profile = AP.db and AP.db.profile
+                        if profile and profile.reminders then
+                            return profile.reminders.autoImport ~= false
+                        end
+                        return true
                     end,
-                    order = 3,
-                },
-                {
-                    id = "remindersPreviewToggle",
-                    type = "execute",
-                    name = function()
-                        return IsReminderPreviewModeEnabled() and "Hide Preview" or "Show Preview"
+                    set = function(value)
+                        local profile = AP.db and AP.db.profile
+                        if profile then
+                            profile.reminders = profile.reminders or {}
+                            profile.reminders.autoImport = value == true
+                        end
                     end,
-                    desc = "Show example reminder rows so you can position the reminder anchor.",
-                    func = ToggleReminderPreviewMode,
                     order = 4,
-                    df = {
-                        width = 180,
-                    },
-                },
-                {
-                    id = "remindersTextSizeSlider",
-                    type = "range",
-                    name = "Text size",
-                    desc = "Adjust reminder text size.",
-                    min = 12,
-                    max = 48,
-                    step = 1,
-                    get = GetReminderTextSizeValue,
-                    set = SetReminderTextSizeValue,
-                    order = 5,
                     ace = {
-                        width = "double",
+                        width = "full",
                     },
                     df = {
-                        usedecimals = false,
-                        width = 280,
+                        boxfirst = true,
                     },
-                },
-                {
-                    id = "remindersTextSizeSpacer",
-                    type = "description",
-                    text = "",
-                    order = 6,
-                },
-                {
-                    id = "remindersMaxVisibleSlider",
-                    type = "range",
-                    name = "Max visible reminders",
-                    desc = "Limit how many reminders can be shown at once.",
-                    min = 1,
-                    max = 10,
-                    step = 1,
-                    get = GetReminderMaxVisibleValue,
-                    set = SetReminderMaxVisibleValue,
-                    order = 8,
-                    ace = {
-                        width = "double",
-                    },
-                    df = {
-                        usedecimals = false,
-                        width = 280,
-                    },
-                },
-                {
-                    id = "remindersMaxVisibleSpacer1",
-                    type = "description",
-                    text = "",
-                    order = 8,
                 },
             },
         },

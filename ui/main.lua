@@ -36,9 +36,7 @@ local remindersEditorBackButton
 local remindersRuleListHeaderLabel
 local remindersRuleListScrollBox
 local remindersRuleStatusLabel
-local remindersHelpLabel
 local remindersRuleNameTextBox
-local remindersRuleTextBox
 local remindersTriggerSecondsTextBox
 local remindersOccurrenceTextBox
 local remindersTimingRow
@@ -56,6 +54,8 @@ local remindersAddRuleButton
 local remindersDeleteRuleButton
 local remindersSaveButton
 local remindersFormHeaderLabel
+local m33kStatusLabel
+local m33kStatusButton
 
 local CONTENT_WIDTH = 1020
 local BODY_TOP_OFFSET = -90
@@ -995,14 +995,6 @@ local function UpdateReminderEditorFormLayout()
         remindersRuleNameTextBox.widget:SetWidth(contentWidth)
     end
 
-    if remindersRuleTextBox and remindersRuleTextBox.widget then
-        remindersRuleTextBox.widget:SetWidth(contentWidth)
-    end
-
-    if remindersHelpLabel then
-        remindersHelpLabel:SetWidth(contentWidth)
-    end
-
     if remindersTimingRow then
         remindersTimingRow:SetWidth(contentWidth)
     end
@@ -1070,6 +1062,9 @@ local function SaveReminderRuleFromUI()
         return
     end
 
+    local definition = reminders:GetDefinitionById(remindersSelectedTimerKey)
+    local defaultText = definition and definition.fullName or "Alert"
+
     local targetRuleId = remindersSelectedRuleId
     if targetRuleId == REMINDER_DRAFT_RULE_ID then
         targetRuleId = nil
@@ -1077,18 +1072,22 @@ local function SaveReminderRuleFromUI()
 
     local success, message, ruleId = reminders:SaveRule(remindersSelectedTimerKey, targetRuleId, {
         name = remindersRuleNameTextBox and remindersRuleNameTextBox:GetText() or "",
-        text = remindersRuleTextBox and remindersRuleTextBox:GetText() or "",
+        text = defaultText,
         secondsBeforeEnd = remindersTriggerSecondsTextBox and remindersTriggerSecondsTextBox:GetText() or "0",
         occurrenceNumber = remindersOccurrenceTextBox and remindersOccurrenceTextBox:GetText() or "0",
         phaseFilters = GetSelectedReminderPhaseFiltersFromUI(),
-        showBar = remindersShowBarCheckbox and remindersShowBarCheckbox:GetChecked() or false,
-        showCountdown = remindersShowCountdownCheckbox and remindersShowCountdownCheckbox:GetChecked() or false,
     })
 
     if success then
         remindersSelectedRuleId = ruleId
         remindersCreatingNewRule = false
         AP:RefreshRemindersTab()
+        if AP.ShowReloadDialog then
+            AP:ShowReloadDialog({
+                text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
+                action = "reminder_creation",
+            })
+        end
     end
 
     SetReminderRuleStatus(message, success and 0.2 or 1, success and 1 or 0.2, success and 0.2 or 0.2)
@@ -1118,6 +1117,43 @@ local function DeleteReminderRuleFromUI()
     SetReminderRuleStatus(message, success and 0.2 or 1, success and 1 or 0.2, success and 0.2 or 0.2)
 end
 
+local function CreateReminderForTimer(timerKey)
+    local reminders = AP:GetModule("Reminders", true)
+    if not reminders then
+        return
+    end
+
+    local definition = reminders:GetDefinitionById(timerKey)
+    if not definition then
+        return
+    end
+
+    local defaultName = definition.fullName or definition.easyName or "Reminder"
+    local success, message = reminders:SaveRule(timerKey, nil, {
+        name = defaultName,
+        text = definition.fullName or "",
+        secondsBeforeEnd = 5,
+        occurrenceNumber = 0,
+        phaseFilters = {},
+    })
+
+    if success then
+        AP:RefreshRemindersTab()
+        if AP.ShowReloadDialog then
+            AP:ShowReloadDialog({
+                text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
+                action = "reminder_creation",
+            })
+        end
+    end
+end
+
+local function ViewRemindersForTimer(timerKey)
+    if SlashCmdList and SlashCmdList["WEAKAURAS"] then
+        SlashCmdList["WEAKAURAS"]("")
+    end
+end
+
 local function CreateReminderObservedLine(self, index)
     local framework = GetFramework()
     local line = CreateFrame("Button", "$parentLine" .. index, self, "BackdropTemplate")
@@ -1139,11 +1175,17 @@ local function CreateReminderObservedLine(self, index)
     end
 
     if framework then
-        line.OpenButton = framework:CreateButton(line, function(_, _, timerKey)
-            OpenReminderEditorForTimer(timerKey)
-        end, 64, 18, "Go To")
-        line.OpenButton:SetPoint("RIGHT", line, "RIGHT", -8, 0)
-        line.OpenButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+        line.CreateButton = framework:CreateButton(line, function(_, _, timerKey)
+            CreateReminderForTimer(timerKey)
+        end, 64, 18, "Create")
+        line.CreateButton:SetPoint("RIGHT", line, "RIGHT", -8, 0)
+        line.CreateButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+        line.ViewButton = framework:CreateButton(line, function(_, _, timerKey)
+            ViewRemindersForTimer(timerKey)
+        end, 64, 18, "View")
+        line.ViewButton:SetPoint("RIGHT", line.CreateButton.widget, "LEFT", -4, 0)
+        line.ViewButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
     end
 
     return line
@@ -1164,8 +1206,11 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
                 line:SetBackdropColor(0.14, 0.12, 0.05, 0.5)
                 line:SetScript("OnClick", nil)
                 line:SetScript("OnDoubleClick", nil)
-                if line.OpenButton then
-                    line.OpenButton:Hide()
+                if line.CreateButton then
+                    line.CreateButton:Hide()
+                end
+                if line.ViewButton then
+                    line.ViewButton:Hide()
                 end
             else
                 line:SetBackdropColor(isSelected and 0.12 or 0.08, isSelected and 0.16 or 0.08, isSelected and 0.1 or 0.1, isSelected and 0.55 or 0.35)
@@ -1175,11 +1220,17 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
                 line:SetScript("OnDoubleClick", function()
                     OpenReminderEditorForTimer(row.timerKey)
                 end)
-                if line.OpenButton then
-                    line.OpenButton:SetClickFunction(function(_, _, timerKey)
-                        OpenReminderEditorForTimer(timerKey)
+                if line.CreateButton then
+                    line.CreateButton:SetClickFunction(function(_, _, timerKey)
+                        CreateReminderForTimer(timerKey)
                     end, row.timerKey)
-                    line.OpenButton:Show()
+                    line.CreateButton:Show()
+                end
+                if line.ViewButton then
+                    line.ViewButton:SetClickFunction(function(_, _, timerKey)
+                        ViewRemindersForTimer(timerKey)
+                    end, row.timerKey)
+                    line.ViewButton:Show()
                 end
             end
 
@@ -1462,27 +1513,8 @@ local function BuildReminderEditorSection(framework, parent, contentAnchor)
     remindersRuleNameTextBox:SetAutoFocus(false)
     remindersRuleNameTextBox:SetText("")
 
-    local reminderTextLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    reminderTextLabel:SetPoint("TOPLEFT", remindersRuleNameTextBox.widget, "BOTTOMLEFT", 0, -12)
-    reminderTextLabel:SetText("Reminder Text")
-    reminderTextLabel:SetTextColor(1, 0.82, 0, 1)
-
-    remindersRuleTextBox = framework:CreateTextEntry(remindersFormPanel, function() end, REMINDER_FORM_WIDTH, 28, nil, "APRaidUtilsReminderRuleTextBox", nil, framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
-    remindersRuleTextBox:SetPoint("TOPLEFT", reminderTextLabel, "BOTTOMLEFT", 0, -8)
-    remindersRuleTextBox:SetAutoFocus(false)
-    remindersRuleTextBox:SetText("")
-
-    remindersHelpLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    remindersHelpLabel:SetPoint("TOPLEFT", remindersRuleTextBox.widget, "BOTTOMLEFT", -6, -6)
-    remindersHelpLabel:SetPoint("TOPRIGHT", remindersFormPanel, "TOPRIGHT", -12, 0)
-    remindersHelpLabel:SetJustifyH("LEFT")
-    remindersHelpLabel:SetWidth(REMINDER_FORM_WIDTH)
-    remindersHelpLabel:SetWordWrap(true)
-    remindersHelpLabel:SetText("Placeholders: {countdown}, {spell}, {boss}")
-    remindersHelpLabel:SetTextColor(0.7, 0.7, 0.7, 1)
-
     local timingLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    timingLabel:SetPoint("TOPLEFT", remindersHelpLabel, "BOTTOMLEFT", 0, -12)
+    timingLabel:SetPoint("TOPLEFT", remindersRuleNameTextBox.widget, "BOTTOMLEFT", 0, -16)
     timingLabel:SetText("Trigger Settings")
     timingLabel:SetTextColor(1, 0.82, 0, 1)
 
@@ -1560,29 +1592,18 @@ local function BuildReminderEditorSection(framework, parent, contentAnchor)
 
     remindersOutputsLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     remindersOutputsLabel:SetPoint("TOPLEFT", remindersPhaseDropdownButton.widget, "BOTTOMLEFT", 0, -12)
-    remindersOutputsLabel:SetText("Outputs")
+    remindersOutputsLabel:SetText("Appearance")
     remindersOutputsLabel:SetTextColor(1, 0.82, 0, 1)
 
-    remindersShowBarCheckbox, _ = framework:CreateSwitch(remindersFormPanel, HandleReminderOutputToggle, false, 20, 20, nil, nil, nil, "$parentShowBarCheckbox")
-    remindersShowBarCheckbox:SetAsCheckBox()
-    remindersShowBarCheckbox:SetPoint("TOPLEFT", remindersOutputsLabel, "BOTTOMLEFT", 0, -8)
-    remindersShowBarCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
-    local remindersShowBarLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    remindersShowBarLabel:SetPoint("LEFT", remindersShowBarCheckbox.widget, "RIGHT", 6, 0)
-    remindersShowBarLabel:SetText("Show custom bar")
-    remindersShowBarCheckbox:CreateExtraSpaceToClick(remindersShowBarLabel, 100)
-
-    remindersShowCountdownCheckbox, _ = framework:CreateSwitch(remindersFormPanel, HandleReminderOutputToggle, false, 20, 20, nil, nil, nil, "$parentShowCountdownCheckbox")
-    remindersShowCountdownCheckbox:SetAsCheckBox()
-    remindersShowCountdownCheckbox:SetPoint("TOPLEFT", remindersShowBarCheckbox, "BOTTOMLEFT", 0, -8)
-    remindersShowCountdownCheckbox:SetTemplate(framework:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
-    local remindersShowCountdownLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    remindersShowCountdownLabel:SetPoint("LEFT", remindersShowCountdownCheckbox.widget, "RIGHT", 6, 0)
-    remindersShowCountdownLabel:SetText("Show countdown")
-    remindersShowCountdownCheckbox:CreateExtraSpaceToClick(remindersShowCountdownLabel, 110)
+    local m33kAurasStatusLabel = remindersFormPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    m33kAurasStatusLabel:SetPoint("TOPLEFT", remindersOutputsLabel, "BOTTOMLEFT", 0, -8)
+    m33kAurasStatusLabel:SetPoint("TOPRIGHT", remindersFormPanel, "TOPRIGHT", -12, 0)
+    m33kAurasStatusLabel:SetTextColor(0.6, 0.8, 1, 1)
+    m33kAurasStatusLabel:SetWordWrap(true)
+    m33kAurasStatusLabel:SetText("Customize reminder appearance via the APRaidUtils Reminder Template in M33kAuras (/wa)")
 
     remindersSaveButton = framework:CreateButton(remindersFormPanel, SaveReminderRuleFromUI, 120, 22, "Save Reminder")
-    remindersSaveButton:SetPoint("TOPLEFT", remindersShowCountdownCheckbox, "BOTTOMLEFT", 0, -12)
+    remindersSaveButton:SetPoint("TOPLEFT", m33kAurasStatusLabel, "BOTTOMLEFT", 0, -16)
     remindersSaveButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
 
     remindersDeleteRuleButton = framework:CreateButton(remindersFormPanel, DeleteReminderRuleFromUI, 120, 22, "Delete Reminder")
@@ -1688,8 +1709,24 @@ local function BuildRemindersTab(framework, parent)
     local anchor = CreateBodyAnchor(parent)
     local titleLabel = CreateSectionLabel(parent, anchor, "BigWigs Reminders")
 
+    m33kStatusFrame = CreateFrame("Frame", nil, parent)
+    m33kStatusFrame:SetPoint("TOPLEFT", titleLabel, "BOTTOMLEFT", 0, -8)
+    m33kStatusFrame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, 0)
+    m33kStatusFrame:SetHeight(60)
+
+    m33kStatusLabel = m33kStatusFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    m33kStatusLabel:SetPoint("TOPLEFT", m33kStatusFrame, "TOPLEFT", 0, 0)
+    m33kStatusLabel:SetPoint("TOPRIGHT", m33kStatusFrame, "TOPRIGHT", 0, 0)
+    m33kStatusLabel:SetHeight(20)
+    m33kStatusLabel:SetWordWrap(true)
+
+    m33kStatusButton = framework:CreateButton(m33kStatusFrame, function() end, 180, 22, "")
+    m33kStatusButton:SetPoint("TOPLEFT", m33kStatusLabel, "BOTTOMLEFT", 0, -4)
+    m33kStatusButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+    m33kStatusButton:Hide()
+
     local contentAnchor = CreateFrame("Frame", "$parentRemindersContentAnchor", parent)
-    contentAnchor:SetPoint("TOPLEFT", titleLabel, "BOTTOMLEFT", 0, -10)
+    contentAnchor:SetPoint("TOPLEFT", m33kStatusFrame, "BOTTOMLEFT", 0, -4)
     contentAnchor:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -20, 0)
     contentAnchor:SetHeight(1)
 
@@ -1860,6 +1897,77 @@ local function BuildRemindersTab(framework, parent)
     parent:RefreshOptions()
 end
 
+local reloadDialogFrame = nil
+
+function AP:ShowReloadDialog(options)
+    if not options or not options.text then
+        return
+    end
+
+    local framework = GetFramework()
+    if not framework then
+        StaticPopupDialogs["APRAIDUTILS_RELOAD_FALLBACK"] = {
+            text = options.text,
+            button1 = "Reload UI",
+            button2 = "Later",
+            OnAccept = function()
+                if APRaidUtilsDB then
+                    APRaidUtilsDB.global.pendingReopenAction = options.action
+                end
+                ReloadUI()
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+        }
+        StaticPopup_Show("APRAIDUTILS_RELOAD_FALLBACK")
+        return
+    end
+
+    if reloadDialogFrame and reloadDialogFrame:IsShown() then
+        reloadDialogFrame:Hide()
+        reloadDialogFrame = nil
+    end
+
+    reloadDialogFrame = framework:CreateSimplePanel(UIParent, 420, 160, "APRaidUtilsReloadDialog", "APRaidUtilsReloadDialog", {
+        UseStatusBar = false,
+        DontRightClickClose = false,
+        Strata = "DIALOG",
+    })
+    reloadDialogFrame:SetPoint("CENTER")
+    reloadDialogFrame:SetFrameStrata("DIALOG")
+
+    local textLabel = reloadDialogFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    textLabel:SetPoint("TOPLEFT", reloadDialogFrame, "TOPLEFT", 20, -20)
+    textLabel:SetPoint("TOPRIGHT", reloadDialogFrame, "TOPRIGHT", -20, -20)
+    textLabel:SetJustifyH("LEFT")
+    textLabel:SetJustifyV("TOP")
+    textLabel:SetWordWrap(true)
+    textLabel:SetText(options.text)
+
+    local reloadButton = framework:CreateButton(reloadDialogFrame, function()
+        AP.db.global.pendingReopenAction = options.action
+        if APRaidUtilsDB then
+            APRaidUtilsDB.global.pendingReopenAction = options.action
+        end
+        reloadDialogFrame:Hide()
+        reloadDialogFrame = nil
+        ReloadUI()
+    end, 140, 24, "Reload UI")
+    reloadButton:SetPoint("BOTTOMRIGHT", reloadDialogFrame, "BOTTOM", -10, 16)
+    reloadButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    local laterButton = framework:CreateButton(reloadDialogFrame, function()
+        reloadDialogFrame:Hide()
+        reloadDialogFrame = nil
+    end, 140, 24, "Later")
+    laterButton:SetPoint("BOTTOMLEFT", reloadDialogFrame, "BOTTOM", 10, 16)
+    laterButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    reloadDialogFrame:Show()
+end
+
 local function BuildMainWindow()
     local framework = GetFramework()
     if not framework then
@@ -1938,6 +2046,20 @@ function AP:ToggleMainWindow(tabName)
     end
 end
 
+local reopenFrame = CreateFrame("Frame")
+reopenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+reopenFrame:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_ENTERING_WORLD" then
+        local action = AP.db and AP.db.global and AP.db.global.pendingReopenAction
+        if action then
+            AP.db.global.pendingReopenAction = nil
+            if AP.OpenMainWindow then
+                AP:OpenMainWindow("Reminders")
+            end
+        end
+    end
+end)
+
 function AP:RefreshSettingsTab()
     if settingsTab and settingsTab.RefreshOptions then
         settingsTab:RefreshOptions()
@@ -1971,6 +2093,54 @@ function AP:RefreshRemindersTab()
 
     local reminders = self:GetModule("Reminders", true)
     if not reminders then
+        return
+    end
+
+    local AuraBuilder = self:GetModule("AuraBuilder", true)
+    local status, statusMsg = reminders:GetM33kAurasStatus()
+    local ready = (status == "ok")
+
+    if m33kStatusLabel then
+        if status == "missing" then
+            m33kStatusLabel:SetText("|cffff4444M33kAuras is not installed. Reminders require M33kAuras to function.|r")
+            m33kStatusButton:SetText("Get M33kAuras")
+            m33kStatusButton:Show()
+            m33kStatusButton:SetScript("OnClick", function()
+                local url = "https://github.com/m33shoq/M33kAuras"
+                local editBox = ChatEdit_ChooseBoxForSend()
+                if editBox then
+                    ChatEdit_ActivateChat(editBox)
+                    editBox:SetText(url)
+                    editBox:HighlightText()
+                end
+            end)
+        elseif status == "missing_template" then
+            m33kStatusLabel:SetText("|cffffaa44Reminder template is missing. Click below to create it.|r")
+            m33kStatusButton:SetText("Create Template")
+            m33kStatusButton:Show()
+            m33kStatusButton:SetScript("OnClick", function()
+                if AuraBuilder then
+                    local ok, err = AuraBuilder:CreateTemplate()
+                    if ok then
+                        m33kStatusLabel:SetText("|cff44ff44Template created! You can now customize it in M33kAuras (/wa).|r")
+                        m33kStatusButton:Hide()
+                        AP:RefreshRemindersTab()
+                    else
+                        m33kStatusLabel:SetText("|cffff4444" .. (err or "Failed to create template.") .. "|r")
+                    end
+                end
+            end)
+        else
+            m33kStatusLabel:SetText("")
+            m33kStatusButton:Hide()
+        end
+    end
+
+    if remindersBrowserFrame then
+        remindersBrowserFrame:SetShown(ready)
+    end
+
+    if not ready then
         return
     end
 
@@ -2171,15 +2341,6 @@ function AP:RefreshRemindersTab()
             end
         end
 
-        if remindersRuleTextBox then
-            remindersRuleTextBox:SetText(editorState.text or "")
-            if editorState.hasTimer then
-                remindersRuleTextBox:Enable()
-            else
-                remindersRuleTextBox:Disable()
-            end
-        end
-
         if remindersTriggerSecondsTextBox then
             remindersTriggerSecondsTextBox:SetText(editorState.secondsBeforeEnd or "0")
             if editorState.hasTimer then
@@ -2201,16 +2362,6 @@ function AP:RefreshRemindersTab()
         if remindersPhaseDropdownMenu then
             RefreshReminderPhaseControls(remindersPhaseDropdownMenu, editorState)
             RefreshReminderPhaseDropdown(editorState)
-        end
-
-        if remindersShowBarCheckbox then
-            remindersShowBarCheckbox:SetChecked(editorState.showBar == true)
-            remindersShowBarCheckbox:SetEnabled(editorState.hasTimer == true)
-        end
-
-        if remindersShowCountdownCheckbox then
-            remindersShowCountdownCheckbox:SetChecked(editorState.showCountdown == true)
-            remindersShowCountdownCheckbox:SetEnabled(editorState.hasTimer == true)
         end
 
         if remindersAddRuleButton then

@@ -22,6 +22,7 @@ local defaults = {
         },
     },
     global = {
+        pendingReopenAction = nil,
         simc = {
             characters = {},
             exports = {},
