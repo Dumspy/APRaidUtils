@@ -13,25 +13,6 @@ local function MakeSafeId(text)
     return text
 end
 
-local function GetEncounterIconById(encounterId)
-    if type(encounterId) ~= "number" then
-        return nil
-    end
-    if EJ_GetEncounterInfo then
-        local _, _, _, _, _, _, _, _, _, icon = EJ_GetEncounterInfo(encounterId)
-        if icon then
-            return icon
-        end
-    end
-    if C_EncounterJournal and C_EncounterJournal.GetEncounterInfo then
-        local info = C_EncounterJournal.GetEncounterInfo(encounterId)
-        if info and info.icon then
-            return info.icon
-        end
-    end
-    return nil
-end
-
 local function CopyTableDeep(source)
     if type(source) ~= "table" then
         return source
@@ -428,8 +409,6 @@ function AuraBuilder:GetOrCreateBossGroup(encounterId, bossName, moduleName, def
         return db[bossGroupId]
     end
 
-    local bossIcon = GetEncounterIconById(encounterId)
-
     local bossGroup = {
         id = bossGroupId,
         name = bossGroupId,
@@ -467,10 +446,6 @@ function AuraBuilder:GetOrCreateBossGroup(encounterId, bossName, moduleName, def
             class = { multi = {} },
         },
     }
-
-    if bossIcon then
-        bossGroup.icon = bossIcon
-    end
 
     M33kAuras.Add(bossGroup)
 
