@@ -129,7 +129,13 @@ function AuraBuilder:CreateDefaultTemplate()
     if db[TEMPLATE_ID] then
         local existing = db[TEMPLATE_ID]
         if existing and existing.ap_is_template then
+            local needsRecreate = false
             if existing.internalVersion and existing.internalVersion < 50 then
+                needsRecreate = true
+            elseif existing.displayText == "Reminder Text Here" then
+                needsRecreate = true
+            end
+            if needsRecreate then
                 M33kAuras.Delete(existing)
             else
                 return true
@@ -154,13 +160,22 @@ function AuraBuilder:CreateDefaultTemplate()
         shadowColor = { 0, 0, 0, 1 },
         shadowXOffset = 1,
         shadowYOffset = -1,
-        displayText = "Reminder Text Here",
+        displayText = "%n (%p remaining)",
         triggers = {
             {
                 trigger = {
-                    type = "status",
-                    event = "Health",
-                    unit = "player",
+                    type = "addons",
+                    event = "Boss Mod Timer",
+                    use_spellId = false,
+                    spellId = "",
+                    use_message = true,
+                    message = "",
+                    message_operator = "find('%s')",
+                    use_count = false,
+                    count = "",
+                    use_remaining = false,
+                    remaining = 0,
+                    remaining_operator = "<",
                 },
                 untrigger = {},
             },
@@ -171,7 +186,7 @@ function AuraBuilder:CreateDefaultTemplate()
                 do_sound = true,
                 sound = { type = "SoundFile", path = 567496 },
                 do_message = true,
-                message = "Watch out for {spell}!",
+                message = "Watch out for %n!",
                 message_type = "Custom",
             },
             finish = {},
@@ -546,13 +561,8 @@ function AuraBuilder:BuildAuraData(rule, definition)
     }
 
     if aura.actions and aura.actions.start then
-        local messageText = rule.text or ""
-        messageText = messageText:gsub("{spell}", definition.fullName or rule.fullName or "")
-        messageText = messageText:gsub("{boss}", definition.bossName or rule.bossName or "")
-        messageText = messageText:gsub("{countdown}", "")
-
         aura.actions.start.do_message = true
-        aura.actions.start.message = messageText
+        aura.actions.start.message = rule.text or ""
         aura.actions.start.message_type = "Custom"
     end
 
