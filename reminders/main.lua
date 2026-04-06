@@ -450,6 +450,7 @@ end
 function Reminders:OnInitialize()
     self.loadedRaidIds = {}
     self.discoveryComplete = false
+    self.lastViewedTimerKey = nil
 end
 
 function Reminders:OnEnable()
@@ -1238,6 +1239,9 @@ function Reminders:SaveRule(definitionId, ruleId, data)
         end
         return left < right
     end)
+    if not ruleId then
+        ruleId = string.format("rule_%s_%d", definitionId, time())
+    end
     local ruleData = {
         name = NormalizeText(data and data.name) or "",
         text = definition.fullName or "",
@@ -1368,4 +1372,12 @@ function Reminders:GetPlaceholderLines()
         )
     end
     return lines
+end
+
+function Reminders:SetLastViewedTimerKey(timerKey)
+    self.lastViewedTimerKey = timerKey
+end
+
+function Reminders:GetLastViewedTimerKey()
+    return self.lastViewedTimerKey
 end

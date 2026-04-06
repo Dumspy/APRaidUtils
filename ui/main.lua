@@ -1152,6 +1152,10 @@ local function ViewRemindersForTimer(timerKey)
     if SlashCmdList and SlashCmdList["WEAKAURAS"] then
         SlashCmdList["WEAKAURAS"]("")
     end
+    local Reminders = AP:GetModule("Reminders", true)
+    if Reminders then
+        Reminders:SetLastViewedTimerKey(timerKey)
+    end
 end
 
 local function CreateReminderObservedLine(self, index)
@@ -1216,9 +1220,6 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
                 line:SetBackdropColor(isSelected and 0.12 or 0.08, isSelected and 0.16 or 0.08, isSelected and 0.1 or 0.1, isSelected and 0.55 or 0.35)
                 line:SetScript("OnClick", function()
                     SelectObservedReminderTimer(row.timerKey)
-                end)
-                line:SetScript("OnDoubleClick", function()
-                    OpenReminderEditorForTimer(row.timerKey)
                 end)
                 if line.CreateButton then
                     line.CreateButton:SetClickFunction(function(_, _, timerKey)
@@ -1879,12 +1880,12 @@ local function BuildRemindersTab(framework, parent)
         true
     )
     remindersObservedScrollBox:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -6)
-    remindersObservedScrollBox:SetPoint("BOTTOMRIGHT", remindersBrowserFrame, "BOTTOMRIGHT", -8, 8)
+    remindersObservedScrollBox:SetPoint("BOTTOMRIGHT", remindersBrowserFrame, "BOTTOMRIGHT", -8, -8)
     framework:ReskinSlider(remindersObservedScrollBox)
     if remindersObservedScrollBox.ScrollBar then
         remindersObservedScrollBox.ScrollBar:ClearAllPoints()
         remindersObservedScrollBox.ScrollBar:SetPoint("TOPRIGHT", remindersObservedScrollBox, "TOPRIGHT", -4, -8)
-        remindersObservedScrollBox.ScrollBar:SetPoint("BOTTOMRIGHT", remindersObservedScrollBox, "BOTTOMRIGHT", -4, 8)
+        remindersObservedScrollBox.ScrollBar:SetPoint("BOTTOMRIGHT", remindersObservedScrollBox, "BOTTOMRIGHT", -4, -8)
     end
     remindersObservedScrollBox:OnSizeChanged()
 

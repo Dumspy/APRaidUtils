@@ -128,33 +128,6 @@ local function GetSections()
                         boxfirst = true,
                     },
                 },
-                {
-                    id = "autoImport",
-                    type = "toggle",
-                    name = "Auto-import pushed reminders",
-                    desc = "Automatically import reminders when they are pushed by your raid leader.",
-                    get = function()
-                        local profile = AP.db and AP.db.profile
-                        if profile and profile.reminders then
-                            return profile.reminders.autoImport ~= false
-                        end
-                        return true
-                    end,
-                    set = function(value)
-                        local profile = AP.db and AP.db.profile
-                        if profile then
-                            profile.reminders = profile.reminders or {}
-                            profile.reminders.autoImport = value == true
-                        end
-                    end,
-                    order = 4,
-                    ace = {
-                        width = "full",
-                    },
-                    df = {
-                        boxfirst = true,
-                    },
-                },
             },
         },
         {
