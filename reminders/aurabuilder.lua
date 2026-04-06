@@ -540,9 +540,9 @@ function AuraBuilder:BuildAuraData(rule, definition)
                 event = "Boss Mod Timer",
                 use_spellId = spellId ~= nil,
                 spellId = spellId and tonumber(spellId) or "",
-                use_message = true,
-                message = definition.fullName or "",
-                message_operator = "==",
+                use_message = spellId == nil,
+                message = spellId == nil and (definition.fullName or "") or "",
+                message_operator = spellId == nil and "find('%s')" or "",
                 use_count = rule.occurrenceNumber and rule.occurrenceNumber > 0,
                 count = tostring(rule.occurrenceNumber or 0),
                 use_remaining = rule.secondsBeforeEnd and rule.secondsBeforeEnd > 0,
@@ -708,13 +708,6 @@ function AuraBuilder:RemoveByRuleId(ruleId)
     end
 
     return false
-end
-
-function AuraBuilder:SyncAllForDefinition(definitionId)
-    return true, "OK"
-end
-
-function AuraBuilder:CleanupOrphanedAuras(definitionId)
 end
 
 function AuraBuilder:RebuildGroups()
