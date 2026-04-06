@@ -19,7 +19,6 @@ simcExport\main.lua
 simcExport\ui.lua
 reminders\main.lua
 reminders\aurabuilder.lua
-reminders\sync.lua
 reminders\ui.lua
 versionChecker/main.lua
 versionChecker/client.lua
