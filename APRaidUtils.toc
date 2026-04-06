@@ -14,11 +14,12 @@ main.lua
 comms.lua
 rosterManager.lua
 settings\registry.lua
-settings\renderers\ace.lua
 settings\renderers\df.lua
-settings.lua
 simcExport\main.lua
 simcExport\ui.lua
+reminders\main.lua
+reminders\aurabuilder.lua
+reminders\ui.lua
 versionChecker/main.lua
 versionChecker/client.lua
 versionChecker/server.lua

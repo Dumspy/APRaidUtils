@@ -9,6 +9,31 @@ local function GetCurrentCharacterText()
     return "Current character is not max level and will not be stored."
 end
 
+local function GetRemindersModule()
+    return AP:GetModule("Reminders", true)
+end
+
+local function GetAuraBuilderModule()
+    return AP:GetModule("AuraBuilder", true)
+end
+
+local function GetM33kAurasStatusText()
+    local Reminders = GetRemindersModule()
+    if Reminders and Reminders.GetM33kAurasStatus then
+        local status, msg = Reminders:GetM33kAurasStatus()
+        if status == "missing" then
+            return "|cffff4444M33kAuras is not installed. Reminders require M33kAuras.|r"
+        elseif status == "missing_template" then
+            return "|cffffaa44M33kAuras installed but reminder template is missing. Create it in the Reminders tab.|r"
+        end
+    end
+    local AuraBuilder = GetAuraBuilderModule()
+    if AuraBuilder and AuraBuilder:IsAvailable() then
+        return "|cff44ff44M33kAuras is installed and ready.|r"
+    end
+    return "M33kAuras is not installed. Reminders require M33kAuras."
+end
+
 local function BuildCharacterItems()
     local items = {}
 
@@ -52,10 +77,37 @@ end
 local function GetSections()
     return {
         {
+            id = "reminders",
+            type = "group",
+            name = "Reminders",
+            order = 2,
+            items = {
+                {
+                    id = "remindersIntro",
+                    type = "description",
+                    text = "Configure APRaidUtils reminder behavior. Reminders are imported as M33kAuras auras - customize their appearance via the APRaidUtils Reminder Template in M33kAuras.",
+                    order = 1,
+                    surfaces = {
+                        ace = true,
+                        df = false,
+                    },
+                    ace = {
+                        fontSize = "medium",
+                    },
+                },
+                {
+                    id = "m33kAurasStatus",
+                    type = "description",
+                    text = GetM33kAurasStatusText,
+                    order = 2,
+                },
+            },
+        },
+        {
             id = "simc",
             type = "group",
             name = "SimulationCraft Exports",
-            order = 1,
+            order = 10,
             items = {
                 {
                     id = "intro",
