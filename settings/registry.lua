@@ -17,6 +17,10 @@ local function GetAuraBuilderModule()
     return AP:GetModule("AuraBuilder", true)
 end
 
+local function GetLeadPassModule()
+    return AP:GetModule("LeadPassReminder", true)
+end
+
 local function GetM33kAurasStatusText()
     local Reminders = GetRemindersModule()
     if Reminders and Reminders.GetM33kAurasStatus then
@@ -76,6 +80,47 @@ end
 
 local function GetSections()
     return {
+        {
+            id = "leadpass",
+            type = "group",
+            name = "Mythic Lead Pass",
+            order = 1,
+            items = {
+                {
+                    id = "leadpassEnabled",
+                    type = "toggle",
+                    name = "Enable Mythic Lead Pass Reminder",
+                    desc = "Show a reminder when you are the raid leader in group 5-8 on Mythic difficulty.",
+                    get = function()
+                        local module = GetLeadPassModule()
+                        return module and module:IsEnabled() or false
+                    end,
+                    set = function(value)
+                        local module = GetLeadPassModule()
+                        if module then
+                            module:SetEnabled(value)
+                        end
+                    end,
+                    order = 1,
+                },
+                {
+                    id = "leadpassToggleAnchors",
+                    type = "execute",
+                    name = "Toggle Anchor Position",
+                    desc = "Show or hide movable anchors to adjust position and appearance. Right-click an anchor for settings.",
+                    func = function()
+                        local module = GetLeadPassModule()
+                        if module then
+                            module:ToggleAnchors()
+                        end
+                    end,
+                    order = 2,
+                    df = {
+                        width = 200,
+                    },
+                },
+            },
+        },
         {
             id = "reminders",
             type = "group",
