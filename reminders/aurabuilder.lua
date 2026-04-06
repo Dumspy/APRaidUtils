@@ -501,7 +501,12 @@ function AuraBuilder:BuildAuraData(rule, definition)
         baseName = MakeSafeId(optName) .. "-opt"
     end
 
-    aura.id = baseName .. "-" .. (rule.ruleId or "unknown")
+    local ruleIdSuffix = nil
+    if rule.ruleId then
+        local _, suffix = rule.ruleId:match("^(.+)_(%d+)$")
+        ruleIdSuffix = suffix or rule.ruleId:sub(-8)
+    end
+    aura.id = baseName .. "-" .. (ruleIdSuffix or "unknown")
     aura.name = string.format("AP: %s - %s",
         definition.bossName or rule.bossName or "Unknown",
         rule.name or definition.fullName or GetSpellNameSafe(spellId) or "Reminder"
