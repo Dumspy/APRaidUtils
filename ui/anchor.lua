@@ -10,30 +10,7 @@ local anchorFrames = {}
 local rightClickMenus = {}
 local allAnchorsVisible = false
 
-local fontTemplateMap = {
-    ["GameFontNormal"] = "Friz Quadrata TT",
-    ["GameFontHighlight"] = "Friz Quadrata TT",
-    ["GameFontNormalSmall"] = "Friz Quadrata TT",
-    ["GameFontHighlightSmall"] = "Friz Quadrata TT",
-    ["GameFontNormalLarge"] = "Friz Quadrata TT",
-    ["GameFontHighlightLarge"] = "Friz Quadrata TT",
-    ["NumberFontNormal"] = "Friz Quadrata TT",
-    ["NumberFontNormalSmall"] = "Friz Quadrata TT",
-    ["ChatFontNormal"] = "Friz Quadrata TT",
-    ["SystemFont_Shadow_Med1"] = "Friz Quadrata TT",
-    ["SystemFont_Shadow_Small"] = "Friz Quadrata TT",
-    ["SystemFont_Outline"] = "Friz Quadrata TT",
-    ["SystemFont_Outline_Small"] = "Friz Quadrata TT",
-    ["FancyTextFont"] = "Friz Quadrata TT",
-    ["QuestTitleFont"] = "Friz Quadrata TT",
-    ["QuestFont"] = "Friz Quadrata TT",
-    ["MasterFont"] = "Friz Quadrata TT",
-}
-
 local function MigrateFont(font)
-    if font and fontTemplateMap[font] then
-        return fontTemplateMap[font]
-    end
     return font
 end
 
@@ -106,7 +83,11 @@ local function ApplySettingsToFrame(frame, settings)
 
     if frame.Text then
         local fontSize = settings.fontSize or 14
-        local fontPath = LSM:Fetch("font", settings.font or "Friz Quadrata TT")
+        local fontName = settings.font or "Friz Quadrata TT"
+        if not LSM:IsValid("font", fontName) then
+            fontName = "Friz Quadrata TT"
+        end
+        local fontPath = LSM:Fetch("font", fontName)
         frame.Text:SetFont(fontPath, fontSize, "")
         frame.Text:SetTextColor(settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0)
         frame.Text:SetWidth((settings.maxWidth or 300) - 10)
@@ -171,7 +152,6 @@ local function BuildSettingsPanel(frame, key)
     sizeSlider:SetValue(settings.fontSize or 14)
     sizeSlider:SetValueChangedFunction(function(self)
         local value = self:GetValue()
-        print("SIZE SLIDER: got value from GetValue=" .. tostring(value))
         local fixedValue = math.floor((value or settings.fontSize or 14) + 0.5)
         SaveAnchorSetting(key, "fontSize", fixedValue)
         local currentSettings = GetMergedSettings(key, frame.UserDefaults)
@@ -245,28 +225,41 @@ local function BuildSettingsPanel(frame, key)
 
     local colorButton = DF:CreateButton(panel, function()
         local r, g, b = settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0
-        
-        ColorPickerFrame.func = function()
-            local cr, cg, cb = ColorPickerFrame:GetColorRGB()
-            SaveAnchorSetting(key, "colorR", cr)
-            SaveAnchorSetting(key, "colorG", cg)
-            SaveAnchorSetting(key, "colorB", cb)
-            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-            ApplySettingsToFrame(frame, currentSettings)
-        end
-        ColorPickerFrame.cancelFunc = function()
-            SaveAnchorSetting(key, "colorR", r)
-            SaveAnchorSetting(key, "colorG", g)
-            SaveAnchorSetting(key, "colorB", b)
-            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-            ApplySettingsToFrame(frame, currentSettings)
-        end
-        ColorPickerFrame.opacityFunc = function()
-        end
-        ColorPickerFrame.r = r
-        ColorPickerFrame.g = g
-        ColorPickerFrame.b = b
-        ColorPickerFrame:Show()
+        local opacity = settings.opacity or 1.0
+
+        local info = {
+            swatchFunc = function()
+                local cr, cg, cb = ColorPickerFrame:GetColorRGB()
+                SaveAnchorSetting(key, "colorR", cr)
+                SaveAnchorSetting(key, "colorG", cg)
+                SaveAnchorSetting(key, "colorB", cb)
+                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                ApplySettingsToFrame(frame, currentSettings)
+            end,
+            hasOpacity = true,
+            opacityFunc = function()
+                local o = ColorPickerFrame:GetColorAlpha()
+                SaveAnchorSetting(key, "opacity", o)
+                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                ApplySettingsToFrame(frame, currentSettings)
+            end,
+            opacity = opacity,
+            cancelFunc = function()
+                SaveAnchorSetting(key, "colorR", r)
+                SaveAnchorSetting(key, "colorG", g)
+                SaveAnchorSetting(key, "colorB", b)
+                SaveAnchorSetting(key, "opacity", opacity)
+                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                ApplySettingsToFrame(frame, currentSettings)
+            end,
+            r = r,
+            g = g,
+            b = b,
+            extraInfo = key,
+        }
+
+        ColorPickerFrame:Hide()
+        ColorPickerFrame:SetupColorPickerAndShow(info)
     end, 240, 22, "Pick Color")
     colorButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     colorButton:SetTemplate(DF:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
@@ -351,7 +344,7 @@ local function CreateAnchorFrame(key, userDefaults)
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")
-    text:SetWidth(290)
+    text:SetWidth((settings.maxWidth or 300) - 10)
     text:SetWordWrap(true)
     frame.Text = text
 
@@ -381,8 +374,10 @@ local function CreateAnchorFrame(key, userDefaults)
 
     frame:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
-        local point, _, relativePoint, x, y = frame:GetPoint()
+        local point, relativeTo, relativePoint, x, y = frame:GetPoint()
+        local relativeToName = relativeTo and relativeTo:GetName()
         SaveAnchorSetting(key, "point", point or "CENTER")
+        SaveAnchorSetting(key, "relativeTo", relativeToName or "UIParent")
         SaveAnchorSetting(key, "relativePoint", relativePoint or "CENTER")
         SaveAnchorSetting(key, "x", x or 0)
         SaveAnchorSetting(key, "y", y or 0)
