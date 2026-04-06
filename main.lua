@@ -5,42 +5,12 @@ local Comms = nil
 
 local defaults = {
     profile = {
-        reminders = {
-            enabled = true,
-            rules = {},
-            definitions = {},
-            observedTimers = {},
-            display = {
-                point = "CENTER",
-                relativePoint = "CENTER",
-                x = 0,
-                y = 0,
-                spacing = 8,
-                textSize = 28,
-                maxVisible = 3,
-            },
-        },
     },
     global = {
         pendingReopenAction = nil,
         simc = {
             characters = {},
             exports = {},
-        },
-        reminders = {
-            enabled = true,
-            rules = {},
-            definitions = {},
-            observedTimers = {},
-            display = {
-                point = "CENTER",
-                relativePoint = "CENTER",
-                x = 0,
-                y = 0,
-                spacing = 8,
-                textSize = 28,
-                maxVisible = 3,
-            },
         },
     },
 }
