@@ -501,7 +501,7 @@ function AuraBuilder:BuildAuraData(rule, definition)
         baseName = MakeSafeId(optName) .. "-opt"
     end
 
-    aura.id = baseName
+    aura.id = baseName .. "-" .. (rule.ruleId or "unknown")
     aura.name = string.format("AP: %s - %s",
         definition.bossName or rule.bossName or "Unknown",
         rule.name or definition.fullName or GetSpellNameSafe(spellId) or "Reminder"
@@ -522,14 +522,16 @@ function AuraBuilder:BuildAuraData(rule, definition)
     aura.parent = definition.bossName or rule.bossName or "Unknown Boss"
 
     local stageNumbers = {}
-    for _, stageValue in ipairs(definition.phaseStageValues or {}) do
-        if stageValue <= 5.5 then
-            stageNumbers[stageValue] = true
-        end
-    end
-    for _, stageValue in ipairs(definition.observedStageValues or {}) do
-        if stageValue <= 5.5 and not stageNumbers[stageValue] then
-            stageNumbers[stageValue] = true
+    if rule.phaseFilters and #rule.phaseFilters > 0 then
+        for _, token in ipairs(rule.phaseFilters) do
+            local stageNum = PhaseTokenToStageNumber(token)
+            if stageNum and stageNum <= 5.5 then
+                stageNumbers[stageNum] = true
+            elseif token == "intermission:any" then
+                for im = 1, 5 do
+                    stageNumbers[im + 0.5] = true
+                end
+            end
         end
     end
 
