@@ -87,7 +87,7 @@ local function CreateAnchor()
         fontSize = 16,
         maxWidth = 400,
         maxHeight = 60,
-        font = "GameFontNormal",
+        font = "Friz Quadrata TT",
         colorR = 1.0,
         colorG = 0.82,
         colorB = 0,

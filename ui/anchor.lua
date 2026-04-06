@@ -3,11 +3,39 @@ local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
 local APAnchor = AP:NewModule("APAnchor")
 
 local DF = LibStub("DetailsFramework-1.0")
+local LSM = LibStub("LibSharedMedia-3.0")
 
 local anchors = {}
 local anchorFrames = {}
 local rightClickMenus = {}
 local allAnchorsVisible = false
+
+local fontTemplateMap = {
+    ["GameFontNormal"] = "Friz Quadrata TT",
+    ["GameFontHighlight"] = "Friz Quadrata TT",
+    ["GameFontNormalSmall"] = "Friz Quadrata TT",
+    ["GameFontHighlightSmall"] = "Friz Quadrata TT",
+    ["GameFontNormalLarge"] = "Friz Quadrata TT",
+    ["GameFontHighlightLarge"] = "Friz Quadrata TT",
+    ["NumberFontNormal"] = "Friz Quadrata TT",
+    ["NumberFontNormalSmall"] = "Friz Quadrata TT",
+    ["ChatFontNormal"] = "Friz Quadrata TT",
+    ["SystemFont_Shadow_Med1"] = "Friz Quadrata TT",
+    ["SystemFont_Shadow_Small"] = "Friz Quadrata TT",
+    ["SystemFont_Outline"] = "Friz Quadrata TT",
+    ["SystemFont_Outline_Small"] = "Friz Quadrata TT",
+    ["FancyTextFont"] = "Friz Quadrata TT",
+    ["QuestTitleFont"] = "Friz Quadrata TT",
+    ["QuestFont"] = "Friz Quadrata TT",
+    ["MasterFont"] = "Friz Quadrata TT",
+}
+
+local function MigrateFont(font)
+    if font and fontTemplateMap[font] then
+        return fontTemplateMap[font]
+    end
+    return font
+end
 
 local defaultAnchorDefaults = {
     point = "CENTER",
@@ -19,32 +47,12 @@ local defaultAnchorDefaults = {
     fontSize = 14,
     maxWidth = 300,
     maxHeight = 60,
-    font = "GameFontNormal",
+    font = "Friz Quadrata TT",
     colorR = 1.0,
     colorG = 0.82,
     colorB = 0,
     opacity = 1.0,
     locked = false,
-}
-
-local fontOptions = {
-    { label = "Normal Font", value = "GameFontNormal" },
-    { label = "Highlight Font", value = "GameFontHighlight" },
-    { label = "Small Normal", value = "GameFontNormalSmall" },
-    { label = "Small Highlight", value = "GameFontHighlightSmall" },
-    { label = "Large Normal", value = "GameFontNormalLarge" },
-    { label = "Large Highlight", value = "GameFontHighlightLarge" },
-    { label = "Number Font", value = "NumberFontNormal" },
-    { label = "Number Font Small", value = "NumberFontNormalSmall" },
-    { label = "Chat Font", value = "ChatFontNormal" },
-    { label = "System Font Shadow Medium", value = "SystemFont_Shadow_Med1" },
-    { label = "System Font Shadow Small", value = "SystemFont_Shadow_Small" },
-    { label = "System Font Outline", value = "SystemFont_Outline" },
-    { label = "System Font Outline Small", value = "SystemFont_Outline_Small" },
-    { label = "Fancy Text", value = "FancyTextFont" },
-    { label = "Quest Title", value = "QuestTitleFont" },
-    { label = "Quest Font", value = "QuestFont" },
-    { label = "Master", value = "MasterFont" },
 }
 
 local function GetAnchorDB(key)
@@ -76,6 +84,9 @@ local function GetMergedSettings(key, userDefaults)
             settings[k] = v
         end
     end
+    if settings.font then
+        settings.font = MigrateFont(settings.font)
+    end
     return settings
 end
 
@@ -95,14 +106,8 @@ local function ApplySettingsToFrame(frame, settings)
 
     if frame.Text then
         local fontSize = settings.fontSize or 14
-        local fontPath = settings.font or "GameFontNormal"
-        local baseFont = _G[fontPath]
-        if baseFont then
-            local fontFile, _, fontFlags = baseFont:GetFont()
-            if fontFile then
-                frame.Text:SetFont(fontFile, fontSize, fontFlags or "")
-            end
-        end
+        local fontPath = LSM:Fetch("font", settings.font or "Friz Quadrata TT")
+        frame.Text:SetFont(fontPath, fontSize, "")
         frame.Text:SetTextColor(settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0)
         frame.Text:SetWidth((settings.maxWidth or 300) - 10)
         frame.Text:SetWordWrap(true)
@@ -214,22 +219,22 @@ local function BuildSettingsPanel(frame, key)
 
     local fontDropdown = DF:CreateDropDown(panel, function()
         local options = {}
-        for _, opt in ipairs(fontOptions) do
+        for _, fontName in ipairs(LSM:List("font")) do
             options[#options + 1] = {
-                value = opt.value,
-                label = opt.label,
+                value = fontName,
+                label = fontName,
                 onclick = function()
-                    SaveAnchorSetting(key, "font", opt.value)
+                    SaveAnchorSetting(key, "font", fontName)
                     local currentSettings = GetMergedSettings(key, frame.UserDefaults)
                     ApplySettingsToFrame(frame, currentSettings)
                     if frame.fontDropdown then
-                        frame.fontDropdown:Select(opt.value, false, false, false)
+                        frame.fontDropdown:Select(fontName, false, false, false)
                     end
                 end,
             }
         end
         return options
-    end, settings.font or "GameFontNormal", 240, 20, nil, "$parentFontDropdown", DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
+    end, settings.font or "Friz Quadrata TT", 240, 20, nil, "$parentFontDropdown", DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
     fontDropdown:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     frame.fontDropdown = fontDropdown
     yOffset = yOffset - 30
@@ -342,7 +347,7 @@ local function CreateAnchorFrame(key, userDefaults)
     frame:SetBackdropColor(0, 0, 0, 0)
     frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
 
-    local text = DF:CreateLabel(frame, settings.text or "", settings.fontSize or 14, {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, settings.font or "GameFontNormal", "Text", "$parentText", "OVERLAY")
+    local text = DF:CreateLabel(frame, settings.text or "", settings.fontSize or 14, {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, "Friz Quadrata TT", "Text", "$parentText", "OVERLAY")
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")
