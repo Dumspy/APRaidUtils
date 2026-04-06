@@ -525,20 +525,6 @@ function Reminders:GetBigWigsBARFlag()
     return nil
 end
 
-function Reminders:IsEnabledForProfile()
-    local profile = AP.db and AP.db.profile
-    return profile and profile.reminders and profile.reminders.enabled == true
-end
-
-function Reminders:SetEnabledForProfile(enabled)
-    local profile = AP.db and AP.db.profile
-    if profile then
-        profile.reminders = profile.reminders or {}
-        profile.reminders.enabled = enabled == true
-    end
-    AP:NotifyOptionsChanged()
-end
-
 function Reminders:IsInRaidInstance()
     local inInstance, instanceType = IsInInstance()
     return inInstance and instanceType == "raid"
@@ -1337,12 +1323,10 @@ function Reminders:GetStatusText()
     local bigWigsLoaded = self:IsBigWigsAvailable() and "available" or "not detected"
     local definitionCount = self:GetDefinitionCount()
     local ruleCount = self:GetRuleCount()
-    local enabledText = self:IsEnabledForProfile() and "enabled" or "disabled"
     local AuraBuilder = AP:GetModule("AuraBuilder", true)
     local m33kStatus = AuraBuilder and AuraBuilder:IsAvailable() and "available" or "not installed"
     return string.format(
-        "Reminders are %s. BigWigs is %s. M33kAuras is %s. Indexed timer definitions: %d. Saved reminders: %d.",
-        enabledText,
+        "BigWigs is %s. M33kAuras is %s. Indexed timer definitions: %d. Saved reminders: %d.",
         bigWigsLoaded,
         m33kStatus,
         definitionCount,

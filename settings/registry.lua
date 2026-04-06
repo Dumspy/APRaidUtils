@@ -17,18 +17,6 @@ local function GetAuraBuilderModule()
     return AP:GetModule("AuraBuilder", true)
 end
 
-local function IsRemindersEnabled()
-    local reminders = GetRemindersModule()
-    return reminders and reminders.IsEnabledForProfile and reminders:IsEnabledForProfile() or false
-end
-
-local function SetRemindersEnabled(value)
-    local reminders = GetRemindersModule()
-    if reminders and reminders.SetEnabledForProfile then
-        reminders:SetEnabledForProfile(value)
-    end
-end
-
 local function GetM33kAurasStatusText()
     local Reminders = GetRemindersModule()
     if Reminders and Reminders.GetM33kAurasStatus then
@@ -112,21 +100,6 @@ local function GetSections()
                     type = "description",
                     text = GetM33kAurasStatusText,
                     order = 2,
-                },
-                {
-                    id = "remindersEnabled",
-                    type = "toggle",
-                    name = "Enable reminders",
-                    desc = "Turn APRaidUtils timer reminders on or off.",
-                    get = IsRemindersEnabled,
-                    set = SetRemindersEnabled,
-                    order = 3,
-                    ace = {
-                        width = "full",
-                    },
-                    df = {
-                        boxfirst = true,
-                    },
                 },
             },
         },

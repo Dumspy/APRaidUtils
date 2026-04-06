@@ -1148,13 +1148,34 @@ local function CreateReminderForTimer(timerKey)
     end
 end
 
-local function ViewRemindersForTimer(timerKey)
-    if SlashCmdList and SlashCmdList["WEAKAURAS"] then
-        SlashCmdList["WEAKAURAS"]("")
-    end
+local function CreateReminderForTimer(timerKey)
     local Reminders = AP:GetModule("Reminders", true)
-    if Reminders then
-        Reminders:SetLastViewedTimerKey(timerKey)
+    if not Reminders then
+        return
+    end
+
+    local definition = Reminders:GetDefinitionById(timerKey)
+    if not definition then
+        return
+    end
+
+    local defaultName = definition.fullName or definition.easyName or "Reminder"
+    local success, message = Reminders:SaveRule(timerKey, nil, {
+        name = defaultName,
+        text = definition.fullName or "",
+        secondsBeforeEnd = 5,
+        occurrenceNumber = 0,
+        phaseFilters = {},
+    })
+
+    if success then
+        AP:RefreshRemindersTab()
+        if AP.ShowReloadDialog then
+            AP:ShowReloadDialog({
+                text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
+                action = "reminder_creation",
+            })
+        end
     end
 end
 
@@ -1181,15 +1202,9 @@ local function CreateReminderObservedLine(self, index)
     if framework then
         line.CreateButton = framework:CreateButton(line, function(_, _, timerKey)
             CreateReminderForTimer(timerKey)
-        end, 64, 18, "Create")
+        end, 80, 18, "Create")
         line.CreateButton:SetPoint("RIGHT", line, "RIGHT", -8, 0)
         line.CreateButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
-
-        line.ViewButton = framework:CreateButton(line, function(_, _, timerKey)
-            ViewRemindersForTimer(timerKey)
-        end, 64, 18, "View")
-        line.ViewButton:SetPoint("RIGHT", line.CreateButton.widget, "LEFT", -4, 0)
-        line.ViewButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
     end
 
     return line
@@ -1213,9 +1228,6 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
                 if line.CreateButton then
                     line.CreateButton:Hide()
                 end
-                if line.ViewButton then
-                    line.ViewButton:Hide()
-                end
             else
                 line:SetBackdropColor(isSelected and 0.12 or 0.08, isSelected and 0.16 or 0.08, isSelected and 0.1 or 0.1, isSelected and 0.55 or 0.35)
                 line:SetScript("OnClick", function()
@@ -1226,12 +1238,6 @@ local function RefreshReminderObservedLines(scrollBox, data, offset, totalLines)
                         CreateReminderForTimer(timerKey)
                     end, row.timerKey)
                     line.CreateButton:Show()
-                end
-                if line.ViewButton then
-                    line.ViewButton:SetClickFunction(function(_, _, timerKey)
-                        ViewRemindersForTimer(timerKey)
-                    end, row.timerKey)
-                    line.ViewButton:Show()
                 end
             end
 
