@@ -1,6 +1,7 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local AP = _G["APRaidUtils"]
 
-local LeadPassReminder = AP:NewModule("LeadPassReminder", "AceEvent-3.0")
+local LeadPassReminder = {}
+AP.LeadPassReminder = LeadPassReminder
 
 local MYTHIC_DIFFICULTY_IDS = {
     [16] = true,
@@ -11,13 +12,13 @@ local DEFAULT_REMINDER_TEXT = "You're in group 5-8 on Mythic. Consider passing l
 local anchorFrame = nil
 
 local function GetSettings()
-    if not AP.db or not AP.db.profile then
+    if not APRaidUtilsDB or not APRaidUtilsDB.profile then
         return { enabled = false }
     end
-    if not AP.db.profile.leadpass then
-        AP.db.profile.leadpass = {}
+    if not APRaidUtilsDB.profile.leadpass then
+        APRaidUtilsDB.profile.leadpass = {}
     end
-    return AP.db.profile.leadpass
+    return APRaidUtilsDB.profile.leadpass
 end
 
 local function IsEnabled()
@@ -31,16 +32,11 @@ local function SetEnabled(value)
 end
 
 local function GetPlayerRaidSubgroup()
-    local raidSize = GetNumGroupMembers()
-    if raidSize == 0 then
-        return 0
-    end
+    if not IsInRaid() then return 0 end
 
-    local playerName = UnitName("player")
-    for i = 1, raidSize do
-        local name, _, subgroup = GetRaidRosterInfo(i)
-        if name == playerName then
-            return subgroup or 0
+    for i = 1, GetNumGroupMembers() do
+        if UnitIsUnit("raid" .. i, "player") then
+            return select(3, GetRaidRosterInfo(i)) or 0
         end
     end
     return 0
@@ -77,7 +73,7 @@ local function CreateAnchor()
         return anchorFrame
     end
 
-    local APAnchor = AP:GetModule("APAnchor", true)
+    local APAnchor = AP.APAnchor
     if not APAnchor then
         return nil
     end
@@ -111,24 +107,6 @@ function LeadPassReminder:CheckConditions()
     end
 end
 
-function LeadPassReminder:OnInitialize()
-end
-
-function LeadPassReminder:OnEnable()
-    self:RegisterEvent("GROUP_ROSTER_UPDATE", "CheckConditions")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "CheckConditions")
-    self:CheckConditions()
-end
-
-function LeadPassReminder:OnDisable()
-    self:UnregisterEvent("GROUP_ROSTER_UPDATE")
-    self:UnregisterEvent("PLAYER_ENTERING_WORLD")
-
-    if anchorFrame then
-        anchorFrame:Hide()
-    end
-end
-
 function LeadPassReminder:IsEnabled()
     return IsEnabled()
 end
@@ -138,7 +116,7 @@ function LeadPassReminder:SetEnabled(value)
 end
 
 function LeadPassReminder:ToggleAnchors()
-    local APAnchor = AP:GetModule("APAnchor", true)
+    local APAnchor = AP.APAnchor
     if not APAnchor then
         return
     end

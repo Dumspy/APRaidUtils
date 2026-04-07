@@ -1,5 +1,7 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local Reminders = AP:NewModule("Reminders", "AceConsole-3.0", "AceEvent-3.0")
+local AP = _G["APRaidUtils"]
+
+local Reminders = {}
+AP.Reminders = Reminders
 
 local bitBand = bit and bit.band
 
@@ -1183,7 +1185,7 @@ function Reminders:SaveRule(definitionId, ruleId, data)
     if not definition then
         return false, "Select a BigWigs timer definition first."
     end
-    local AuraBuilder = AP:GetModule("AuraBuilder", true)
+    local AuraBuilder = AP.AuraBuilder
     if not AuraBuilder then
         return false, "AuraBuilder module not found."
     end
@@ -1267,7 +1269,7 @@ function Reminders:DeleteRule(definitionId, ruleId)
     if not ruleId or ruleId == "" then
         return false, "Select a saved reminder first."
     end
-    local AuraBuilder = AP:GetModule("AuraBuilder", true)
+    local AuraBuilder = AP.AuraBuilder
     if AuraBuilder then
         AuraBuilder:RemoveByRuleId(ruleId)
     end
@@ -1305,7 +1307,7 @@ function Reminders:GetDefinitionCount()
 end
 
 function Reminders:GetM33kAurasStatus()
-    local AuraBuilder = AP:GetModule("AuraBuilder", true)
+    local AuraBuilder = AP.AuraBuilder
     if not AuraBuilder then
         return "missing", "AuraBuilder module not found."
     end
@@ -1323,7 +1325,7 @@ function Reminders:GetStatusText()
     local bigWigsLoaded = self:IsBigWigsAvailable() and "available" or "not detected"
     local definitionCount = self:GetDefinitionCount()
     local ruleCount = self:GetRuleCount()
-    local AuraBuilder = AP:GetModule("AuraBuilder", true)
+    local AuraBuilder = AP.AuraBuilder
     local m33kStatus = AuraBuilder and AuraBuilder:IsAvailable() and "available" or "not installed"
     return string.format(
         "BigWigs is %s. M33kAuras is %s. Indexed timer definitions: %d. Saved reminders: %d.",

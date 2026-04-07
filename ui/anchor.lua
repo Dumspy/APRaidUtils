@@ -1,6 +1,7 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local AP = _G["APRaidUtils"]
 
-local APAnchor = AP:NewModule("APAnchor")
+local APAnchor = {}
+AP.APAnchor = APAnchor
 
 local DF = LibStub("DetailsFramework-1.0")
 local LSM = LibStub("LibSharedMedia-3.0")

@@ -1,5 +1,5 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local Reminders = AP:GetModule("Reminders")
+local AP = _G["APRaidUtils"]
+local Reminders = AP.Reminders
 
 function Reminders:RefreshUI()
     if AP.RefreshRemindersTab then

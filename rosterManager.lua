@@ -1,5 +1,7 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local RosterManager = AP:NewModule("RosterManager", "AceConsole-3.0")
+local AP = _G["APRaidUtils"]
+
+local RosterManager = {}
+AP.RosterManager = RosterManager
 
 function RosterManager:GetPreparedRoster(rosterString)
     if not rosterString or strtrim(rosterString) == "" then
@@ -210,5 +212,5 @@ function RosterManager:ShowUI()
         return
     end
 
-    self:Print("APRaidUtils UI is unavailable.")
+    AP:Print("APRaidUtils UI is unavailable.")
 end

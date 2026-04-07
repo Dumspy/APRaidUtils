@@ -1,4 +1,4 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local AP = _G["APRaidUtils"]
 
 local function GetCurrentCharacterText()
     local currentCharacter = AP:GetPlayerCharacterInfo()
@@ -10,15 +10,15 @@ local function GetCurrentCharacterText()
 end
 
 local function GetRemindersModule()
-    return AP:GetModule("Reminders", true)
+    return AP.Reminders
 end
 
 local function GetAuraBuilderModule()
-    return AP:GetModule("AuraBuilder", true)
+    return AP.AuraBuilder
 end
 
 local function GetLeadPassModule()
-    return AP:GetModule("LeadPassReminder", true)
+    return AP.LeadPassReminder
 end
 
 local function GetM33kAurasStatusText()

@@ -1,10 +1,10 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local Comms = AP:GetModule("Comms")
-local VersionChecker = AP:GetModule("VersionChecker")
+local AP = _G["APRaidUtils"]
+local Comms = AP.Comms
+local VersionChecker = AP.VersionChecker
 
-function VersionChecker:OnEnable()
+if Comms then
     Comms:RegisterCallback("VERSION_INFO", function(event, sender, distribution, data)
-        self:AppendUIResultRow(sender, data.versions or {})
+        VersionChecker:AppendUIResultRow(sender, data.versions or {})
     end)
 end
 
@@ -20,7 +20,7 @@ function VersionChecker:RequestVersionCheck(waNames)
         if self.SetVersionStatusText then
             self:SetVersionStatusText("Not in a group.")
         end
-        self:Print("Not in a group!")
+        AP:Print("Not in a group!")
         return false
     end
 
@@ -29,7 +29,6 @@ function VersionChecker:RequestVersionCheck(waNames)
     end
 
     Comms:Broadcast("QUERY_VERSION", channel, {waNames = waNames})
-    self:Print("Requested version info from " .. channel .. " members.")
+    AP:Print("Requested version info from " .. channel .. " members.")
     return true
 end
-

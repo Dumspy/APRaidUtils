@@ -1,19 +1,11 @@
-APRaidUtils = LibStub("AceAddon-3.0"):NewAddon("APRaidUtils", "AceConsole-3.0", "AceEvent-3.0")
+local AP = {}
+_G["APRaidUtils"] = AP
+_G["AP"] = AP
 
-local AceDB = LibStub("AceDB-3.0")
-local Comms = nil
-
-local defaults = {
-    profile = {
-    },
-    global = {
-        pendingReopenAction = nil,
-        simc = {
-            characters = {},
-            exports = {},
-        },
-    },
-}
+local eventFrame = CreateFrame("Frame")
+AP.eventFrame = eventFrame
+eventFrame:SetAllPoints(UIParent)
+eventFrame:SetFrameStrata("BACKGROUND")
 
 local simcRequiredEquipmentSlots = {
     "head",
@@ -77,36 +69,64 @@ local function WrapTextInClassColor(classFile, text)
     return text
 end
 
-function APRaidUtils:OnInitialize()
-    self.db = AceDB:New("APRaidUtilsDB", defaults, true)
-    self:CleanupSimcData()
-    Comms = self:GetModule("Comms")
-    self:RegisterChatCommand("ap", "HandleChatCommand")
-
-    self:Print("Loaded")
-    self:RegisterEvent("PLAYER_LOGIN", "OnPlayerLogin")
-    
-    Comms:RegisterCallback("CHECK_UPDATE", function(event, sender, distribution, data)
-        local theirVersion = data and data.versions and data.versions.APRaidUtils
-        local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
-        if theirVersion and myVersion and IsVersionNewer(theirVersion, myVersion) then
-            APRaidUtils:Print("A newer version of APRaidUtils is available: " .. theirVersion)
-        end
-    end)
+local function InitializeSavedVariables()
+    APRaidUtilsDB = APRaidUtilsDB or {}
+    APRaidUtilsDB.profile = APRaidUtilsDB.profile or {}
+    APRaidUtilsDB.global = APRaidUtilsDB.global or {}
+    APRaidUtilsDB.global.pendingReopenAction = nil
+    APRaidUtilsDB.global.simc = APRaidUtilsDB.global.simc or {
+        characters = {},
+        exports = {},
+    }
 end
 
-function APRaidUtils:OnPlayerLogin()
+function AP:Print(...)
+    print("|cFFFFD100APRaidUtils|r:", ...)
+end
+
+function AP:OnAddonLoaded()
+    InitializeSavedVariables()
+    self:CleanupSimcData()
+
+    if AP.Comms then
+        AP.Comms:RegisterCallback("CHECK_UPDATE", function(event, sender, distribution, data)
+            local theirVersion = data and data.versions and data.versions.APRaidUtils
+            local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
+            if theirVersion and myVersion and self:IsVersionNewer(theirVersion, myVersion) then
+                self:Print("A newer version of APRaidUtils is available: " .. theirVersion)
+            end
+        end)
+    end
+
+    self:Print("Loaded")
+end
+
+function AP:OnPlayerLogin()
     self:CleanupSimcData()
     self:RegisterCurrentCharacter()
     self:NotifyOptionsChanged()
 
-    if IsInGuild() then
+    if IsInGuild() and AP.Comms then
         local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
-        Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
+        AP.Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
     end
 end
 
-function APRaidUtils:GetEffectiveMaxLevel()
+function AP:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
+    if isInitialLogin or isReloadingUi then
+        self:CleanupSimcData()
+        self:RegisterCurrentCharacter()
+        self:NotifyOptionsChanged()
+    end
+
+    local pendingAction = APRaidUtilsDB and APRaidUtilsDB.global and APRaidUtilsDB.global.pendingReopenAction
+    if pendingAction and self.OpenMainWindow then
+        self:OpenMainWindow(pendingAction.tab or "SimC")
+        APRaidUtilsDB.global.pendingReopenAction = nil
+    end
+end
+
+function AP:GetEffectiveMaxLevel()
     if GameRulesUtil and GameRulesUtil.GetEffectiveMaxLevelForPlayer then
         return GameRulesUtil.GetEffectiveMaxLevelForPlayer()
     end
@@ -122,7 +142,7 @@ function APRaidUtils:GetEffectiveMaxLevel()
     return 0
 end
 
-function APRaidUtils:IsMaxLevel(level)
+function AP:IsMaxLevel(level)
     local maxLevel = self:GetEffectiveMaxLevel()
     if maxLevel <= 0 then
         return false
@@ -131,7 +151,7 @@ function APRaidUtils:IsMaxLevel(level)
     return (level or 0) >= maxLevel
 end
 
-function APRaidUtils:GetCharacterKey(name, realm)
+function AP:GetCharacterKey(name, realm)
     if not name or name == "" then
         return nil
     end
@@ -144,7 +164,7 @@ function APRaidUtils:GetCharacterKey(name, realm)
     return name .. "-" .. characterRealm
 end
 
-function APRaidUtils:GetCharacterNameText(character)
+function AP:GetCharacterNameText(character)
     if not character or not character.name then
         return ""
     end
@@ -156,11 +176,11 @@ function APRaidUtils:GetCharacterNameText(character)
     return character.name
 end
 
-function APRaidUtils:GetCharacterDisplayName(character)
+function AP:GetCharacterDisplayName(character)
     return WrapTextInClassColor(character and character.classFile, self:GetCharacterNameText(character))
 end
 
-function APRaidUtils:GetCharacterClassText(character)
+function AP:GetCharacterClassText(character)
     if not character or not character.classFile then
         return ""
     end
@@ -168,7 +188,7 @@ function APRaidUtils:GetCharacterClassText(character)
     return LOCALIZED_CLASS_NAMES_MALE[character.classFile] or LOCALIZED_CLASS_NAMES_FEMALE[character.classFile] or character.classFile
 end
 
-function APRaidUtils:GetCharacterSpecializationText(character, specName)
+function AP:GetCharacterSpecializationText(character, specName)
     local specialization = specName or (character and character.specName)
     if not specialization or specialization == "" then
         return ""
@@ -182,12 +202,12 @@ function APRaidUtils:GetCharacterSpecializationText(character, specName)
     return specialization
 end
 
-function APRaidUtils:GetPlayerCharacterInfo()
+function AP:GetPlayerCharacterInfo()
     local name = UnitName("player")
     local realm = GetRealmName() or ""
     local normalizedRealm = GetNormalizedRealmNameSafe()
     local level = UnitLevel("player") or 0
-    local _, classFile = UnitClass("player")
+    local _, classFile = UnitClassBase("player")
 
     local specIndex = nil
     if C_SpecializationInfo and C_SpecializationInfo.GetSpecialization then
@@ -214,11 +234,11 @@ function APRaidUtils:GetPlayerCharacterInfo()
     }
 end
 
-function APRaidUtils:GetSimcStorage()
-    return self.db.global.simc
+function AP:GetSimcStorage()
+    return APRaidUtilsDB and APRaidUtilsDB.global and APRaidUtilsDB.global.simc or { characters = {}, exports = {} }
 end
 
-function APRaidUtils:IsSimcExportValid(exportText)
+function AP:IsSimcExportValid(exportText)
     if not exportText or exportText == "" then
         return false
     end
@@ -251,7 +271,10 @@ function APRaidUtils:IsSimcExportValid(exportText)
     return false
 end
 
-function APRaidUtils:CleanupSimcData()
+function AP:CleanupSimcData()
+    if self._simcCleanupDone then return end
+    self._simcCleanupDone = true
+
     local simc = self:GetSimcStorage()
     local maxLevel = self:GetEffectiveMaxLevel()
 
@@ -269,7 +292,7 @@ function APRaidUtils:CleanupSimcData()
     end
 end
 
-function APRaidUtils:RegisterCurrentCharacter()
+function AP:RegisterCurrentCharacter()
     local characterInfo = self:GetPlayerCharacterInfo()
     if not characterInfo or not characterInfo.key then
         return nil
@@ -296,14 +319,11 @@ function APRaidUtils:RegisterCurrentCharacter()
     return characterInfo
 end
 
-function APRaidUtils:GetSimcCharacter(characterKey)
-    self:CleanupSimcData()
+function AP:GetSimcCharacter(characterKey)
     return self:GetSimcStorage().characters[characterKey]
 end
 
-function APRaidUtils:GetSimcCharacters()
-    self:CleanupSimcData()
-
+function AP:GetSimcCharacters()
     local characters = {}
     for characterKey, character in pairs(self:GetSimcStorage().characters) do
         characters[#characters + 1] = {
@@ -325,14 +345,11 @@ function APRaidUtils:GetSimcCharacters()
     return characters
 end
 
-function APRaidUtils:GetSimcExport(characterKey)
-    self:CleanupSimcData()
+function AP:GetSimcExport(characterKey)
     return self:GetSimcStorage().exports[characterKey]
 end
 
-function APRaidUtils:GetSimcExportCharacters()
-    self:CleanupSimcData()
-
+function AP:GetSimcExportCharacters()
     local characters = {}
     local simc = self:GetSimcStorage()
     for _, character in ipairs(self:GetSimcCharacters()) do
@@ -345,12 +362,12 @@ function APRaidUtils:GetSimcExportCharacters()
     return characters
 end
 
-function APRaidUtils:IsSimcCharacterEnabled(characterKey)
+function AP:IsSimcCharacterEnabled(characterKey)
     local character = self:GetSimcCharacter(characterKey)
     return character and character.enabled == true or false
 end
 
-function APRaidUtils:SetSimcCharacterEnabled(characterKey, enabled)
+function AP:SetSimcCharacterEnabled(characterKey, enabled)
     local character = self:GetSimcCharacter(characterKey)
     if not character then
         return
@@ -360,7 +377,7 @@ function APRaidUtils:SetSimcCharacterEnabled(characterKey, enabled)
     self:NotifyOptionsChanged()
 end
 
-function APRaidUtils:SaveSimcExport(characterInfo, exportText)
+function AP:SaveSimcExport(characterInfo, exportText)
     if not characterInfo or not characterInfo.key or not exportText or exportText == "" then
         return false
     end
@@ -391,7 +408,7 @@ function APRaidUtils:SaveSimcExport(characterInfo, exportText)
     return true
 end
 
-function APRaidUtils:NotifyOptionsChanged()
+function AP:NotifyOptionsChanged()
     if self.RefreshSimcTab then
         self:RefreshSimcTab()
     end
@@ -405,7 +422,7 @@ function APRaidUtils:NotifyOptionsChanged()
     end
 end
 
-function APRaidUtils:HandleChatCommand()
+function AP:HandleChatCommand()
     if self.ToggleMainWindow then
         self:ToggleMainWindow()
         return
@@ -414,17 +431,38 @@ function APRaidUtils:HandleChatCommand()
     self:Print("APRaidUtils UI is unavailable.")
 end
 
-function IsVersionNewer(their, mine)
+function AP:IsVersionNewer(their, mine)
     local maj1, min1, pat1 = tostring(their):match("^v?(%d+)%.?(%d*)%.?(%d*)$")
     maj1, min1, pat1 = tonumber(maj1) or 0, tonumber(min1) or 0, tonumber(pat1) or 0
 
-    -- Parse "mine"
     local maj2, min2, pat2 = tostring(mine):match("^v?(%d+)%.?(%d*)%.?(%d*)$")
     maj2, min2, pat2 = tonumber(maj2) or 0, tonumber(min2) or 0, tonumber(pat2) or 0
 
-    -- Compare
     if maj1 > maj2 then return true end
     if maj1 == maj2 and min1 > min2 then return true end
     if maj1 == maj2 and min1 == min2 and pat1 > pat2 then return true end
     return false
 end
+
+function AP:ShowReloadDialog(options)
+    if not options or not options.text then return end
+
+    local popup = StaticPopup_Show("AP_RELOAD_DIALOG")
+    if popup then
+        popup.text:SetText(options.text)
+        popup.data = options.action
+    end
+end
+
+SlashCmdList["APRAIDUTILS"] = function(msg) AP:HandleChatCommand(msg) end
+SLASH_APRAIDUTILS1 = "/ap"
+
+StaticPopupDialogs["AP_RELOAD_DIALOG"] = {
+    text = "%s",
+    button1 = "Reload UI",
+    button2 = "Later",
+    OnAccept = function() ReloadUI() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}

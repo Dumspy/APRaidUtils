@@ -11,8 +11,10 @@
 libs\libs.xml
 
 main.lua
+eventHandler.lua
 comms.lua
 rosterManager.lua
+leadpass.lua
 settings\registry.lua
 settings\renderers\df.lua
 simcExport\main.lua
@@ -20,10 +22,9 @@ simcExport\ui.lua
 reminders\main.lua
 reminders\aurabuilder.lua
 reminders\ui.lua
-versionChecker/main.lua
-versionChecker/client.lua
-versionChecker/server.lua
-versionChecker/ui.lua
-ui/main.lua
-ui/anchor.lua
-leadpass.lua
+versionChecker\main.lua
+versionChecker\client.lua
+versionChecker\server.lua
+versionChecker\ui.lua
+ui\main.lua
+ui\anchor.lua

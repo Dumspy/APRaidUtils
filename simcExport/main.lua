@@ -1,12 +1,7 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local SimcExport = AP:NewModule("SimcExport", "AceConsole-3.0", "AceEvent-3.0")
+local AP = _G["APRaidUtils"]
 
-function SimcExport:OnEnable()
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "HandlePlayerEnteringWorld")
-
-    AP:RegisterCurrentCharacter()
-    AP:NotifyOptionsChanged()
-end
+local SimcExport = {}
+AP.SimcExport = SimcExport
 
 function SimcExport:GetSimulationcraftAddon()
     if C_AddOns and C_AddOns.IsAddOnLoaded and not C_AddOns.IsAddOnLoaded("Simulationcraft") then
@@ -45,7 +40,7 @@ end
 function SimcExport:SaveCapturedExport(characterInfo, exportText, silent)
     if not exportText or exportText == "" then
         if not silent then
-            self:Print("Simulationcraft returned an empty export.")
+            AP:Print("Simulationcraft returned an empty export.")
         end
         return false
     end
@@ -53,13 +48,13 @@ function SimcExport:SaveCapturedExport(characterInfo, exportText, silent)
     local didSave = AP:SaveSimcExport(characterInfo, exportText)
     if not didSave then
         if not silent then
-            self:Print("Simulationcraft returned an incomplete export. Your previous saved export was kept.")
+            AP:Print("Simulationcraft returned an incomplete export. Your previous saved export was kept.")
         end
         return false
     end
 
     if not silent then
-        self:Print("Saved SimulationCraft export for " .. AP:GetCharacterDisplayName(characterInfo) .. ".")
+        AP:Print("Saved SimulationCraft export for " .. AP:GetCharacterDisplayName(characterInfo) .. ".")
     end
 
     return true
@@ -69,21 +64,21 @@ function SimcExport:CaptureCurrentCharacterViaCommand(characterInfo, silent)
     local simcAddon, simcError = self:GetSimulationcraftAddon()
     if not simcAddon then
         if not silent then
-            self:Print(simcError)
+            AP:Print(simcError)
         end
         return false
     end
 
     if not simcAddon.PrintSimcProfile or not simcAddon.GetMainFrame then
         if not silent then
-            self:Print("Simulationcraft command export support is unavailable.")
+            AP:Print("Simulationcraft command export support is unavailable.")
         end
         return false
     end
 
     if self.captureInProgress then
         if not silent then
-            self:Print("A SimulationCraft export is already being generated.")
+            AP:Print("A SimulationCraft export is already being generated.")
         end
         return false
     end
@@ -109,7 +104,7 @@ function SimcExport:CaptureCurrentCharacterViaCommand(characterInfo, silent)
 
         if errorMessage then
             if not silent then
-                self:Print(errorMessage)
+                AP:Print(errorMessage)
             end
             return
         end
@@ -146,14 +141,14 @@ function SimcExport:GetAutomaticCaptureCharacterInfo(silent)
 
     if not characterInfo or not characterInfo.isMaxLevel then
         if not silent then
-            self:Print("Only max-level characters can save SimulationCraft exports.")
+            AP:Print("Only max-level characters can save SimulationCraft exports.")
         end
         return nil
     end
 
     if not AP:IsSimcCharacterEnabled(characterInfo.key) then
         if not silent then
-            self:Print("Enable this character in APRaidUtils settings first.")
+            AP:Print("Enable this character in APRaidUtils settings first.")
         end
         return nil
     end
@@ -187,7 +182,7 @@ function SimcExport:ScheduleAutomaticCapture()
     end)
 end
 
-function SimcExport:HandlePlayerEnteringWorld(_, isInitialLogin, isReloadingUi)
+function SimcExport:OnPlayerEnteringWorld(_, isInitialLogin, isReloadingUi)
     if not isInitialLogin and not isReloadingUi then
         return
     end
@@ -204,7 +199,7 @@ function SimcExport:CaptureCurrentCharacter(silent)
     local exporter, simcError = self:GetSimulationcraftExporter()
     if not exporter then
         if not silent then
-            self:Print(simcError)
+            AP:Print(simcError)
         end
         return false
     end
@@ -212,14 +207,14 @@ function SimcExport:CaptureCurrentCharacter(silent)
     local success, exportText, exportError = pcall(exporter, false, false, false, nil)
     if not success then
         if not silent then
-            self:Print("Failed to generate a SimulationCraft export. Simulationcraft may still be initializing.")
+            AP:Print("Failed to generate a SimulationCraft export. Simulationcraft may still be initializing.")
         end
         return false
     end
 
     if exportError and exportError ~= "" then
         if not silent then
-            self:Print(exportError)
+            AP:Print(exportError)
         end
         return false
     end
@@ -230,13 +225,13 @@ end
 function SimcExport:ManualCapture()
     local characterInfo = AP:RegisterCurrentCharacter()
     if not characterInfo or not characterInfo.isMaxLevel then
-        self:Print("Only max-level characters can save SimulationCraft exports.")
+        AP:Print("Only max-level characters can save SimulationCraft exports.")
         return
     end
 
     if not AP:IsSimcCharacterEnabled(characterInfo.key) then
         AP:SetSimcCharacterEnabled(characterInfo.key, true)
-        self:Print("Enabled SimulationCraft auto capture for " .. AP:GetCharacterDisplayName(characterInfo) .. ".")
+        AP:Print("Enabled SimulationCraft auto capture for " .. AP:GetCharacterDisplayName(characterInfo) .. ".")
     end
 
     local didStart = self:CaptureCurrentCharacterViaCommand(characterInfo, false)

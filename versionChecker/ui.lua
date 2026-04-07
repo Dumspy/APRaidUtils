@@ -1,5 +1,5 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local VersionChecker = AP:GetModule("VersionChecker")
+local AP = _G["APRaidUtils"]
+local VersionChecker = AP.VersionChecker
 
 local function GetPlayerName()
     return UnitName("player") or "Player"
@@ -99,5 +99,5 @@ function VersionChecker:ShowUI()
         return
     end
 
-    self:Print("APRaidUtils UI is unavailable.")
+    AP:Print("APRaidUtils UI is unavailable.")
 end
