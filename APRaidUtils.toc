@@ -25,3 +25,5 @@ versionChecker/client.lua
 versionChecker/server.lua
 versionChecker/ui.lua
 ui/main.lua
+ui/anchor.lua
+leadpass.lua
