@@ -1992,6 +1992,12 @@ local function BuildMainWindow()
     })
     mainWindow:SetPoint("CENTER")
     mainWindow:SetFrameStrata("HIGH")
+    mainWindow:HookScript("OnHide", function()
+        local anchorModule = AP:GetModule("APAnchor", true)
+        if anchorModule and anchorModule.IsAnchorsVisible and anchorModule:IsAnchorsVisible() then
+            anchorModule:HideAllAnchors()
+        end
+    end)
 
     mainTabs = framework:CreateTabContainer(mainWindow, "APRaidUtils", "APRaidUtilsMainTabs", tabList, {
         width = 1196,

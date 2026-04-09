@@ -3,6 +3,7 @@ local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
 local APAnchor = AP:NewModule("APAnchor")
 
 local DF = LibStub("DetailsFramework-1.0")
+local SharedMedia = LibStub("LibSharedMedia-3.0")
 
 local anchors = {}
 local anchorFrames = {}
@@ -25,26 +26,6 @@ local defaultAnchorDefaults = {
     colorB = 0,
     opacity = 1.0,
     locked = false,
-}
-
-local fontOptions = {
-    { label = "Normal Font", value = "GameFontNormal" },
-    { label = "Highlight Font", value = "GameFontHighlight" },
-    { label = "Small Normal", value = "GameFontNormalSmall" },
-    { label = "Small Highlight", value = "GameFontHighlightSmall" },
-    { label = "Large Normal", value = "GameFontNormalLarge" },
-    { label = "Large Highlight", value = "GameFontHighlightLarge" },
-    { label = "Number Font", value = "NumberFontNormal" },
-    { label = "Number Font Small", value = "NumberFontNormalSmall" },
-    { label = "Chat Font", value = "ChatFontNormal" },
-    { label = "System Font Shadow Medium", value = "SystemFont_Shadow_Med1" },
-    { label = "System Font Shadow Small", value = "SystemFont_Shadow_Small" },
-    { label = "System Font Outline", value = "SystemFont_Outline" },
-    { label = "System Font Outline Small", value = "SystemFont_Outline_Small" },
-    { label = "Fancy Text", value = "FancyTextFont" },
-    { label = "Quest Title", value = "QuestTitleFont" },
-    { label = "Quest Font", value = "QuestFont" },
-    { label = "Master", value = "MasterFont" },
 }
 
 local function GetAnchorDB(key)
@@ -86,35 +67,55 @@ local function SaveAnchorSetting(key, setting, value)
     end
 end
 
-local function ApplySettingsToFrame(frame, settings)
-    local relativeTo = settings.relativeTo and _G[settings.relativeTo] or UIParent
-    frame:ClearAllPoints()
-    frame:SetPoint(settings.point or "CENTER", relativeTo, settings.relativePoint or "CENTER", settings.x or 0, settings.y or 0)
-    frame:SetScale(settings.scale or 1.0)
-    frame:SetSize(settings.maxWidth or 300, settings.maxHeight or 60)
+local function ResolveAnchorFont(fontValue, fontString)
+    if fontValue and fontValue ~= "" then
+        local sharedMediaFont = SharedMedia:Fetch("font", fontValue, true)
+        if sharedMediaFont then
+            local _, _, currentFlags = fontString:GetFont()
+            return sharedMediaFont, currentFlags or ""
+        end
 
-    if frame.Text then
-        local fontSize = settings.fontSize or 14
-        local fontPath = settings.font or "GameFontNormal"
-        local baseFont = _G[fontPath]
-        if baseFont then
-            local fontFile, _, fontFlags = baseFont:GetFont()
+        local fontObject = _G[fontValue]
+        if fontObject and fontObject.GetFont then
+            local fontFile, _, fontFlags = fontObject:GetFont()
             if fontFile then
-                frame.Text:SetFont(fontFile, fontSize, fontFlags or "")
+                return fontFile, fontFlags or ""
             end
         end
-        frame.Text:SetTextColor(settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0)
-        frame.Text:SetWidth((settings.maxWidth or 300) - 10)
-        frame.Text:SetWordWrap(true)
     end
 
-    if settings.locked then
-        frame.UnlockOverlay:Hide()
-        frame.DragTexture:Hide()
-    else
-        frame.UnlockOverlay:Show()
-        frame.DragTexture:Show()
+    local currentFontFile, _, currentFlags = fontString:GetFont()
+    if currentFontFile then
+        return currentFontFile, currentFlags or ""
     end
+
+    local defaultFontObject = _G[defaultAnchorDefaults.font]
+    if defaultFontObject and defaultFontObject.GetFont then
+        local defaultFontFile, _, defaultFontFlags = defaultFontObject:GetFont()
+        if defaultFontFile then
+            return defaultFontFile, defaultFontFlags or ""
+        end
+    end
+
+    local sharedMediaDefault = SharedMedia:GetDefault("font")
+    if sharedMediaDefault then
+        local defaultSharedMediaFont = SharedMedia:Fetch("font", sharedMediaDefault, true)
+        if defaultSharedMediaFont then
+            return defaultSharedMediaFont, ""
+        end
+    end
+end
+
+local function GetFontDropdownValue(fontValue)
+    if fontValue and fontValue ~= "" and SharedMedia:Fetch("font", fontValue, true) then
+        return fontValue
+    end
+
+    return "DEFAULT"
+end
+
+local function RoundAnchorValue(value)
+    return math.floor((value or 0) + 0.5)
 end
 
 local function HideSettingsPanel(frame)
@@ -123,18 +124,104 @@ local function HideSettingsPanel(frame)
     end
 end
 
-local function PositionSettingsPanel(panel, anchorFrame)
-    panel:ClearAllPoints()
-    
-    local anchorRight = anchorFrame:GetRight() or 0
-    local screenWidth = UIParent:GetWidth() or 1920
-    local anchorFrameRight = anchorRight / screenWidth
-    
-    if anchorFrameRight > 0.5 then
-        panel:SetPoint("TOPRIGHT", anchorFrame, "TOPRIGHT", 20, 0)
-    else
-        panel:SetPoint("TOPLEFT", anchorFrame, "TOPLEFT", -20, 0)
+local function SetAnchorFrameShown(frame, shown)
+    frame.APInternalVisibilityChange = true
+    frame:SetShown(shown)
+    frame.APInternalVisibilityChange = false
+end
+
+local function UpdateAnchorFrameEditState(frame, settings)
+    if not allAnchorsVisible then
+        frame.UnlockOverlay:Hide()
+        frame.DragTexture:Hide()
+        frame:SetBackdropBorderColor(0, 0, 0, 0)
+        HideSettingsPanel(frame)
+        return
     end
+
+    if settings.locked then
+        frame.UnlockOverlay:Hide()
+        frame.DragTexture:Hide()
+        frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
+        return
+    end
+
+    frame.UnlockOverlay:Show()
+    frame.DragTexture:Show()
+
+    if frame.APIsMouseOver then
+        frame:SetBackdropBorderColor(1, 0.82, 0, 0.8)
+    else
+        frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
+    end
+end
+
+local function RefreshAnchorFrameVisibility(frame)
+    local shouldShow = (allAnchorsVisible or frame.APFeatureVisible) and not frame.APTemporaryHidden
+
+    if frame:IsShown() ~= shouldShow then
+        SetAnchorFrameShown(frame, shouldShow)
+    end
+
+    if shouldShow then
+        local settings = GetMergedSettings(frame.AnchorKey, frame.UserDefaults)
+        UpdateAnchorFrameEditState(frame, settings)
+    else
+        HideSettingsPanel(frame)
+    end
+end
+
+local function ApplySettingsToFrame(frame, settings)
+    local relativeTo = settings.relativeTo and _G[settings.relativeTo] or UIParent
+    frame:ClearAllPoints()
+    frame:SetPoint(settings.point or "CENTER", relativeTo, settings.relativePoint or "CENTER", settings.x or 0, settings.y or 0)
+    frame:SetScale(settings.scale or 1.0)
+    frame:SetSize(settings.maxWidth or 300, settings.maxHeight or 60)
+
+    if frame.Text then
+        local fontSize = math.min(settings.fontSize or 14, 72)
+        local fontFile, fontFlags = ResolveAnchorFont(settings.font, frame.Text)
+        if fontFile then
+            frame.Text:SetFont(fontFile, fontSize, fontFlags or "")
+        end
+        frame.Text:SetTextColor(settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0)
+        frame.Text:SetWidth((settings.maxWidth or 300) - 10)
+        frame.Text:SetWordWrap(true)
+    end
+
+    UpdateAnchorFrameEditState(frame, settings)
+end
+
+local function PositionSettingsPanel(panel, anchorFrame, key)
+    panel:ClearAllPoints()
+
+    local db = GetAnchorDB(key)
+    if db and db.settingsPanelDetached and db.settingsPanelPosition and db.settingsPanelPosition.x ~= nil and db.settingsPanelPosition.y ~= nil then
+        DF:RestoreFramePosition(panel)
+        return
+    end
+
+    local screenWidth = UIParent:GetWidth() or 1920
+    local screenHeight = UIParent:GetHeight() or 1080
+    local panelWidth = panel:GetWidth() or 280
+    local panelHeight = panel:GetHeight() or 400
+    local anchorLeft = anchorFrame:GetLeft() or 0
+    local anchorRight = anchorFrame:GetRight() or 0
+    local anchorTop = anchorFrame:GetTop() or screenHeight
+
+    local x
+    if anchorRight > (screenWidth * 0.5) then
+        x = anchorRight - panelWidth - 20
+    else
+        x = anchorLeft + 20
+    end
+
+    local y = math.min(anchorTop, screenHeight - 20)
+
+    x = math.max(20, math.min(x, screenWidth - panelWidth - 20))
+    y = math.max(panelHeight + 20, y)
+
+    panel:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
 end
 
 local function BuildSettingsPanel(frame, key)
@@ -150,9 +237,44 @@ local function BuildSettingsPanel(frame, key)
         Strata = "DIALOG",
     })
     panel:SetFrameStrata("DIALOG")
+    panel:SetClampedToScreen(true)
     panel:Hide()
 
-    PositionSettingsPanel(panel, frame)
+    local db = GetAnchorDB(key)
+    if db then
+        db.settingsPanelPosition = db.settingsPanelPosition or {}
+        panel.db = {
+            position = db.settingsPanelPosition,
+        }
+    end
+
+    panel:HookScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then
+            return
+        end
+
+        local x, y = DF:GetPositionOnScreen(self)
+        self.APMouseDownX = x
+        self.APMouseDownY = y
+    end)
+
+    panel:HookScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" or not db or not db.settingsPanelPosition then
+            return
+        end
+
+        local x, y = DF:GetPositionOnScreen(self)
+        if not x or not y then
+            return
+        end
+
+        db.settingsPanelPosition.x = x
+        db.settingsPanelPosition.y = y
+
+        if self.APMouseDownX and self.APMouseDownY and (math.abs(x - self.APMouseDownX) > 1 or math.abs(y - self.APMouseDownY) > 1) then
+            db.settingsPanelDetached = true
+        end
+    end)
 
     local yOffset = -10
 
@@ -160,14 +282,13 @@ local function BuildSettingsPanel(frame, key)
     sizeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local sizeSlider = DF:CreateSlider(panel, 200, 16, 10, 32, 1, settings.fontSize, false, nil, "$parentSizeSlider", "Size:")
+    local sizeSlider = DF:CreateSlider(panel, 200, 16, 10, 72, 1, settings.fontSize, false, nil, "$parentSizeSlider", "Size:")
     sizeSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     sizeSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    sizeSlider:SetValue(settings.fontSize or 14)
+    sizeSlider:SetValue(math.min(settings.fontSize or 14, 72))
     sizeSlider:SetValueChangedFunction(function(self)
         local value = self:GetValue()
-        print("SIZE SLIDER: got value from GetValue=" .. tostring(value))
-        local fixedValue = math.floor((value or settings.fontSize or 14) + 0.5)
+        local fixedValue = RoundAnchorValue(value or settings.fontSize or 14)
         SaveAnchorSetting(key, "fontSize", fixedValue)
         local currentSettings = GetMergedSettings(key, frame.UserDefaults)
         ApplySettingsToFrame(frame, currentSettings)
@@ -178,13 +299,13 @@ local function BuildSettingsPanel(frame, key)
     widthLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local widthSlider = DF:CreateSlider(panel, 200, 16, 100, 1000, 10, settings.maxWidth or 300, false, nil, "$parentWidthSlider", "Width:")
+    local widthSlider = DF:CreateSlider(panel, 200, 16, 100, 2000, 10, settings.maxWidth or 300, false, nil, "$parentWidthSlider", "Width:")
     widthSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     widthSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     widthSlider:SetValue(settings.maxWidth or 300)
     widthSlider:SetValueChangedFunction(function(self)
         local value = self:GetValue()
-        local fixedValue = math.floor((value or settings.maxWidth or 300) + 0.5)
+        local fixedValue = RoundAnchorValue(value or settings.maxWidth or 300)
         SaveAnchorSetting(key, "maxWidth", fixedValue)
         local currentSettings = GetMergedSettings(key, frame.UserDefaults)
         ApplySettingsToFrame(frame, currentSettings)
@@ -195,13 +316,13 @@ local function BuildSettingsPanel(frame, key)
     heightLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local heightSlider = DF:CreateSlider(panel, 200, 16, 20, 400, 10, settings.maxHeight or 60, false, nil, "$parentHeightSlider", "Height:")
+    local heightSlider = DF:CreateSlider(panel, 200, 16, 20, 1000, 10, settings.maxHeight or 60, false, nil, "$parentHeightSlider", "Height:")
     heightSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     heightSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     heightSlider:SetValue(settings.maxHeight or 60)
     heightSlider:SetValueChangedFunction(function(self)
         local value = self:GetValue()
-        local fixedValue = math.floor((value or settings.maxHeight or 60) + 0.5)
+        local fixedValue = RoundAnchorValue(value or settings.maxHeight or 60)
         SaveAnchorSetting(key, "maxHeight", fixedValue)
         local currentSettings = GetMergedSettings(key, frame.UserDefaults)
         ApplySettingsToFrame(frame, currentSettings)
@@ -212,60 +333,18 @@ local function BuildSettingsPanel(frame, key)
     fontLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local fontDropdown = DF:CreateDropDown(panel, function()
-        local options = {}
-        for _, opt in ipairs(fontOptions) do
-            options[#options + 1] = {
-                value = opt.value,
-                label = opt.label,
-                onclick = function()
-                    SaveAnchorSetting(key, "font", opt.value)
-                    local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-                    ApplySettingsToFrame(frame, currentSettings)
-                    if frame.fontDropdown then
-                        frame.fontDropdown:Select(opt.value, false, false, false)
-                    end
-                end,
-            }
+    local fontDropdown = DF:CreateFontDropDown(panel, function(_, _, value)
+        if value == "DEFAULT" then
+            SaveAnchorSetting(key, "font", nil)
+        else
+            SaveAnchorSetting(key, "font", value)
         end
-        return options
-    end, settings.font or "GameFontNormal", 240, 20, nil, "$parentFontDropdown", DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"))
+
+        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+        ApplySettingsToFrame(frame, currentSettings)
+    end, GetFontDropdownValue(settings.font), 240, 20, nil, "$parentFontDropdown", DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"), true)
     fontDropdown:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    frame.fontDropdown = fontDropdown
     yOffset = yOffset - 30
-
-    local colorLabel = DF:CreateLabel(panel, "Color", 10, "orange")
-    colorLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    yOffset = yOffset - 18
-
-    local colorButton = DF:CreateButton(panel, function()
-        local r, g, b = settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0
-        
-        ColorPickerFrame.func = function()
-            local cr, cg, cb = ColorPickerFrame:GetColorRGB()
-            SaveAnchorSetting(key, "colorR", cr)
-            SaveAnchorSetting(key, "colorG", cg)
-            SaveAnchorSetting(key, "colorB", cb)
-            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-            ApplySettingsToFrame(frame, currentSettings)
-        end
-        ColorPickerFrame.cancelFunc = function()
-            SaveAnchorSetting(key, "colorR", r)
-            SaveAnchorSetting(key, "colorG", g)
-            SaveAnchorSetting(key, "colorB", b)
-            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-            ApplySettingsToFrame(frame, currentSettings)
-        end
-        ColorPickerFrame.opacityFunc = function()
-        end
-        ColorPickerFrame.r = r
-        ColorPickerFrame.g = g
-        ColorPickerFrame.b = b
-        ColorPickerFrame:Show()
-    end, 240, 22, "Pick Color")
-    colorButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    colorButton:SetTemplate(DF:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
-    yOffset = yOffset - 32
 
     local opacityLabel = DF:CreateLabel(panel, "Opacity", 10, "orange")
     opacityLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
@@ -298,8 +377,9 @@ local function BuildSettingsPanel(frame, key)
     yOffset = yOffset - 30
 
     local hideButton = DF:CreateButton(panel, function()
+        frame.APTemporaryHidden = true
         panel:Hide()
-        frame:Hide()
+        RefreshAnchorFrameVisibility(frame)
     end, 240, 22, "Hide Anchor")
     hideButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     hideButton:SetTemplate(DF:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
@@ -342,7 +422,7 @@ local function CreateAnchorFrame(key, userDefaults)
     frame:SetBackdropColor(0, 0, 0, 0)
     frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
 
-    local text = DF:CreateLabel(frame, settings.text or "", settings.fontSize or 14, {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, settings.font or "GameFontNormal", "Text", "$parentText", "OVERLAY")
+    local text = DF:CreateLabel(frame, settings.text or "", math.min(settings.fontSize or 14, 72), {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, defaultAnchorDefaults.font, "Text", "$parentText", "OVERLAY")
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")
@@ -362,6 +442,9 @@ local function CreateAnchorFrame(key, userDefaults)
     dragTexture:SetColorTexture(0.3, 0.2, 0.05, 0.15)
     dragTexture:Hide()
     frame.DragTexture = dragTexture
+    frame.APFeatureVisible = false
+    frame.APTemporaryHidden = false
+    frame.APIsMouseOver = false
 
     frame:SetScript("OnDragStart", function()
         if not allAnchorsVisible then
@@ -384,17 +467,15 @@ local function CreateAnchorFrame(key, userDefaults)
     end)
 
     frame:SetScript("OnEnter", function()
+        frame.APIsMouseOver = true
         local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        if not currentSettings.locked then
-            frame:SetBackdropBorderColor(1, 0.82, 0, 0.8)
-        end
+        UpdateAnchorFrameEditState(frame, currentSettings)
     end)
 
     frame:SetScript("OnLeave", function()
+        frame.APIsMouseOver = false
         local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        if not currentSettings.locked then
-            frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
-        end
+        UpdateAnchorFrameEditState(frame, currentSettings)
     end)
 
     frame:SetScript("OnMouseDown", function(_, button)
@@ -403,6 +484,7 @@ local function CreateAnchorFrame(key, userDefaults)
             if panel:IsShown() then
                 panel:Hide()
             else
+                PositionSettingsPanel(panel, frame, key)
                 panel:Show()
             end
         end
@@ -410,6 +492,25 @@ local function CreateAnchorFrame(key, userDefaults)
 
     frame.UserDefaults = userDefaults or {}
     frame.AnchorKey = key
+
+    frame:HookScript("OnShow", function()
+        if frame.APInternalVisibilityChange then
+            return
+        end
+
+        frame.APFeatureVisible = true
+        frame.APTemporaryHidden = false
+        RefreshAnchorFrameVisibility(frame)
+    end)
+
+    frame:HookScript("OnHide", function()
+        if frame.APInternalVisibilityChange then
+            return
+        end
+
+        frame.APFeatureVisible = false
+        RefreshAnchorFrameVisibility(frame)
+    end)
 
     ApplySettingsToFrame(frame, settings)
 
@@ -425,12 +526,7 @@ function APAnchor:CreateAnchor(key, userDefaults)
     anchors[key] = true
 
     local frame = CreateAnchorFrame(key, userDefaults)
-
-    if allAnchorsVisible then
-        frame:Show()
-    else
-        frame:Hide()
-    end
+    RefreshAnchorFrameVisibility(frame)
 
     return frame
 end
@@ -451,7 +547,8 @@ function APAnchor:ShowAllAnchors()
     for key in pairs(anchors) do
         local frame = anchorFrames[key]
         if frame then
-            frame:Show()
+            frame.APTemporaryHidden = false
+            RefreshAnchorFrameVisibility(frame)
         end
     end
 end
@@ -461,8 +558,8 @@ function APAnchor:HideAllAnchors()
     for key in pairs(anchors) do
         local frame = anchorFrames[key]
         if frame then
-            frame:Hide()
-            HideSettingsPanel(frame)
+            frame.APTemporaryHidden = false
+            RefreshAnchorFrameVisibility(frame)
         end
     end
 end
