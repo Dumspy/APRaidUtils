@@ -62,7 +62,12 @@ function Comms:OnCommReceived(prefix, message, distribution, sender)
 
     local callback = callbacks[payload.event]
     if callback then
-        local cbSuccess, err = pcall(callback, payload.event, sender, distribution, payload.data)
+        local callbackData = payload.data
+        if payload.data[2] == nil and type(payload.data[1]) == "table" then
+            callbackData = payload.data[1]
+        end
+
+        local cbSuccess, err = pcall(callback, payload.event, sender, distribution, callbackData)
         if not cbSuccess then
             AP:Print("Error handling comm event " .. payload.event .. ": " .. tostring(err))
         end

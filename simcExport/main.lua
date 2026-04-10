@@ -182,7 +182,7 @@ function SimcExport:ScheduleAutomaticCapture()
     end)
 end
 
-function SimcExport:OnPlayerEnteringWorld(_, isInitialLogin, isReloadingUi)
+function SimcExport:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
     if not isInitialLogin and not isReloadingUi then
         return
     end

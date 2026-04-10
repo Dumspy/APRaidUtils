@@ -33,6 +33,8 @@ local defaultAnchorDefaults = {
     locked = false,
 }
 
+local DEFAULT_LABEL_FONT_OBJECT = "GameFontNormal"
+
 local function GetAnchorDB(key)
     if not APRaidUtilsDB or not APRaidUtilsDB.profile then
         return nil
@@ -476,7 +478,7 @@ local function CreateAnchorFrame(key, userDefaults)
     frame:SetBackdropColor(0, 0, 0, 0)
     frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
 
-    local text = DF:CreateLabel(frame, settings.text or "", math.min(settings.fontSize or 14, 72), {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, defaultAnchorDefaults.font, "Text", "$parentText", "OVERLAY")
+    local text = DF:CreateLabel(frame, settings.text or "", math.min(settings.fontSize or 14, 72), {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, DEFAULT_LABEL_FONT_OBJECT, "Text", "$parentText", "OVERLAY")
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")

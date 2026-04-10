@@ -1085,7 +1085,6 @@ local function SaveReminderRuleFromUI()
         if AP.ShowReloadDialog then
             AP:ShowReloadDialog({
                 text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
-                action = "reminder_creation",
             })
         end
     end
@@ -1142,7 +1141,6 @@ local function CreateReminderForTimer(timerKey)
         if AP.ShowReloadDialog then
             AP:ShowReloadDialog({
                 text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
-                action = "reminder_creation",
             })
         end
     end
@@ -1173,7 +1171,6 @@ local function CreateReminderForTimer(timerKey)
         if AP.ShowReloadDialog then
             AP:ShowReloadDialog({
                 text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
-                action = "reminder_creation",
             })
         end
     end
@@ -1918,9 +1915,6 @@ function AP:ShowReloadDialog(options)
             button1 = "Reload UI",
             button2 = "Later",
             OnAccept = function()
-                if APRaidUtilsDB then
-                    APRaidUtilsDB.global.pendingReopenAction = options.action
-                end
                 ReloadUI()
             end,
             timeout = 0,
@@ -1954,9 +1948,6 @@ function AP:ShowReloadDialog(options)
     textLabel:SetText(options.text)
 
     local reloadButton = framework:CreateButton(reloadDialogFrame, function()
-        if APRaidUtilsDB then
-            APRaidUtilsDB.global.pendingReopenAction = options.action
-        end
         reloadDialogFrame:Hide()
         reloadDialogFrame = nil
         ReloadUI()
@@ -2058,20 +2049,6 @@ function AP:ToggleMainWindow(tabName)
     end
 end
 
-local reopenFrame = CreateFrame("Frame")
-reopenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-reopenFrame:SetScript("OnEvent", function(self, event)
-    if event == "PLAYER_ENTERING_WORLD" then
-        local action = APRaidUtilsDB and APRaidUtilsDB.global and APRaidUtilsDB.global.pendingReopenAction
-        if action then
-            APRaidUtilsDB.global.pendingReopenAction = nil
-            if AP.OpenMainWindow then
-                AP:OpenMainWindow("Reminders")
-            end
-        end
-    end
-end)
-
 function AP:RefreshSettingsTab()
     if settingsTab and settingsTab.RefreshOptions then
         settingsTab:RefreshOptions()
@@ -2156,10 +2133,6 @@ function AP:RefreshRemindersTab()
         return
     end
 
-    if reminders.PrimeReminderData then
-        reminders:PrimeReminderData(remindersSelectedRaidFilter)
-    end
-
     if remindersRaidDropdown and reminders.GetRaidFilterItems then
         local raidItems = reminders:GetRaidFilterItems(remindersOnlyCurrentExpansion)
         local hasSelectedRaid = remindersSelectedRaidFilter == "ALL"
@@ -2174,6 +2147,10 @@ function AP:RefreshRemindersTab()
         end
         remindersRaidDropdown:Refresh()
         remindersRaidDropdown:Select(remindersSelectedRaidFilter, false, false, false)
+    end
+
+    if reminders.PrimeReminderData then
+        reminders:PrimeReminderData(remindersSelectedRaidFilter)
     end
 
     if remindersBossDropdown and reminders.GetBossFilterItems then

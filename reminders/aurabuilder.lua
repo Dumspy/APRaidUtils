@@ -210,7 +210,6 @@ function AuraBuilder:CreateDefaultTemplate()
     if AP.ShowReloadDialog then
         AP:ShowReloadDialog({
             text = "The APRaidUtils Reminder Template has been created in M33kAuras. Please reload your UI to see it in the M33kAuras list.",
-            action = "template_creation",
         })
     end
 

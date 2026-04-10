@@ -4,6 +4,7 @@ local Reminders = {}
 AP.Reminders = Reminders
 
 local bitBand = bit and bit.band
+local CURRENT_EXPANSION_RAID_FILTER = "CURRENT_EXPANSION"
 
 local function CopyTableShallow(source)
     local copy = {}
@@ -449,7 +450,58 @@ local function GetM33kAurasDB()
     return M33kAurasSaved and M33kAurasSaved.displays
 end
 
+local function GetDefinitionRaidId(definition)
+    if type(definition) ~= "table" then
+        return nil
+    end
+
+    local raidId = tonumber(definition.raidId)
+    if IsPositiveNumber(raidId) then
+        return raidId
+    end
+
+    local instanceId = tonumber(definition.instanceId)
+    if IsPositiveNumber(instanceId) then
+        return instanceId
+    end
+
+    return nil
+end
+
+local function EnsureRuntimeState(self)
+    if type(self.loadedRaidIds) ~= "table" then
+        self.loadedRaidIds = {}
+    end
+
+    if type(self.cachedDefinitions) ~= "table" then
+        self.cachedDefinitions = {}
+    end
+end
+
+function Reminders:GetKnownRaidIds(onlyCurrentExpansion)
+    local raidIds = {}
+
+    if not self:IsBigWigsAvailable() or type(BigWigsLoader.zoneTbl) ~= "table" then
+        return raidIds
+    end
+
+    for zoneId, addonName in pairs(BigWigsLoader.zoneTbl) do
+        if IsPositiveNumber(zoneId) and type(addonName) == "string" and addonName:find("BigWigs", 1, true) then
+            if not onlyCurrentExpansion or self:IsCurrentExpansionRaidId(zoneId) then
+                raidIds[#raidIds + 1] = zoneId
+            end
+        end
+    end
+
+    table.sort(raidIds, function(left, right)
+        return tostring(self:GetRaidDisplayName(left)):lower() < tostring(self:GetRaidDisplayName(right)):lower()
+    end)
+
+    return raidIds
+end
+
 function Reminders:OnInitialize()
+    EnsureRuntimeState(self)
     self.loadedRaidIds = {}
     self.discoveryComplete = false
     self.lastViewedTimerKey = nil
@@ -533,7 +585,8 @@ function Reminders:IsInRaidInstance()
 end
 
 function Reminders:GetAllKnownRaidItems()
-    if not self:IsBigWigsAvailable() or type(BigWigsLoader.zoneTbl) ~= "table" then
+    local raidIds = self:GetKnownRaidIds(false)
+    if #raidIds == 0 then
         return {
             { value = "ALL", label = "All loaded raids" },
         }
@@ -541,19 +594,12 @@ function Reminders:GetAllKnownRaidItems()
     local items = {
         { value = "ALL", label = "All loaded raids" },
     }
-    for zoneId, addonName in pairs(BigWigsLoader.zoneTbl) do
-        if IsPositiveNumber(zoneId) and type(addonName) == "string" and addonName:find("BigWigs", 1, true) then
-            items[#items + 1] = {
-                value = tostring(zoneId),
-                label = self:GetRaidDisplayName(zoneId, addonName),
-            }
-        end
+    for _, zoneId in ipairs(raidIds) do
+        items[#items + 1] = {
+            value = tostring(zoneId),
+            label = self:GetRaidDisplayName(zoneId),
+        }
     end
-    table.sort(items, function(left, right)
-        if left.value == "ALL" then return true end
-        if right.value == "ALL" then return false end
-        return tostring(left.label):lower() < tostring(right.label):lower()
-    end)
     return items
 end
 
@@ -582,28 +628,33 @@ function Reminders:GetRaidFilterItems(onlyCurrentExpansion)
     if not onlyCurrentExpansion then
         return self:GetAllKnownRaidItems()
     end
+
     local filtered = {
-        { value = "ALL", label = "Current expansion raids" },
+        { value = CURRENT_EXPANSION_RAID_FILTER, label = "Current expansion raids" },
     }
-    for _, item in ipairs(self:GetAllKnownRaidItems()) do
-        local zoneId = tonumber(item.value)
-        if zoneId and self:IsCurrentExpansionRaidId(zoneId) then
-            filtered[#filtered + 1] = item
-        end
+
+    for _, zoneId in ipairs(self:GetKnownRaidIds(true)) do
+        filtered[#filtered + 1] = {
+            value = tostring(zoneId),
+            label = self:GetRaidDisplayName(zoneId),
+        }
     end
+
     return filtered
 end
 
 function Reminders:GetCurrentRaidFilterDefault(onlyCurrentExpansion)
-    local items = self:GetRaidFilterItems(onlyCurrentExpansion)
-    if items[2] then
-        return items[2].value
+    if onlyCurrentExpansion then
+        return CURRENT_EXPANSION_RAID_FILTER
     end
+
     return "ALL"
 end
 
 function Reminders:EnsureRaidMetadataLoaded(filterValue)
-    if filterValue == nil or filterValue == "" or filterValue == "ALL" then
+    EnsureRuntimeState(self)
+
+    if filterValue == nil or filterValue == "" then
         self.debugLastRaidLoad = {
             raidId = filterValue,
             coreLoaded = self:GetBigWigsCore() ~= nil,
@@ -615,6 +666,29 @@ function Reminders:EnsureRaidMetadataLoaded(filterValue)
         }
         return false
     end
+
+    if filterValue == "ALL" or filterValue == CURRENT_EXPANSION_RAID_FILTER then
+        local raidIds = self:GetKnownRaidIds(filterValue == CURRENT_EXPANSION_RAID_FILTER)
+        local didLoadAny = false
+
+        for _, raidId in ipairs(raidIds) do
+            if self:EnsureRaidMetadataLoaded(tostring(raidId)) then
+                didLoadAny = true
+            end
+        end
+
+        self.debugLastRaidLoad = {
+            raidId = filterValue,
+            coreLoaded = self:GetBigWigsCore() ~= nil,
+            usedMenuModules = false,
+            modulesSeen = #raidIds,
+            matchedModules = #raidIds,
+            definitionsBuilt = self:GetDefinitionCount(),
+            reason = filterValue == CURRENT_EXPANSION_RAID_FILTER and "current-expansion" or "all-loaded",
+        }
+        return didLoadAny
+    end
+
     local zoneId = tonumber(filterValue)
     if not IsPositiveNumber(zoneId) then
         self.debugLastRaidLoad = {
@@ -783,6 +857,8 @@ function Reminders:BuildDefinitionFromOption(module, optionEntry, phaseMetadata,
 end
 
 function Reminders:RebuildDefinitionsForRaid(raidId)
+    EnsureRuntimeState(self)
+
     local core = self:GetBigWigsCore()
     if not core or not core.IterateBossModules then
         self.debugLastRaidLoad = {
@@ -816,7 +892,6 @@ function Reminders:RebuildDefinitionsForRaid(raidId)
             end
         end
     end
-    self.cachedDefinitions = {}
     local count = 0
     local bossOrder = 0
     for _, module in ipairs(modules) do
@@ -875,12 +950,18 @@ function Reminders:RebuildDefinitionsForRaid(raidId)
 end
 
 function Reminders:GetDefinitionsForRaid(filterValue)
-    if filterValue and filterValue ~= "ALL" then
+    if filterValue then
         self:EnsureRaidMetadataLoaded(filterValue)
     end
     local rows = {}
     for definitionId, definition in pairs(self.cachedDefinitions or {}) do
-        if filterValue == nil or filterValue == "ALL" or tostring(definition.raidId or definition.instanceId or "") == tostring(filterValue) then
+        local definitionRaidId = GetDefinitionRaidId(definition)
+        local matchesFilter = filterValue == nil
+            or filterValue == "ALL"
+            or (filterValue == CURRENT_EXPANSION_RAID_FILTER and self:IsCurrentExpansionRaidId(definitionRaidId))
+            or tostring(definitionRaidId or "") == tostring(filterValue)
+
+        if matchesFilter then
             local row = CopyTableShallow(definition)
             row.timerKey = definitionId
             rows[#rows + 1] = row
@@ -1293,7 +1374,7 @@ end
 
 function Reminders:PrimeReminderData(filterValue)
     self.debugLastRequestedRaidFilter = filterValue
-    if filterValue and filterValue ~= "ALL" then
+    if filterValue then
         self:EnsureRaidMetadataLoaded(filterValue)
     end
 end

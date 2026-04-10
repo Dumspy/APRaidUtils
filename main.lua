@@ -121,12 +121,6 @@ function AP:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
         self:RegisterCurrentCharacter()
         self:NotifyOptionsChanged()
     end
-
-    local pendingAction = APRaidUtilsDB and APRaidUtilsDB.global and APRaidUtilsDB.global.pendingReopenAction
-    if pendingAction and self.OpenMainWindow then
-        self:OpenMainWindow(pendingAction.tab or "SimC")
-        APRaidUtilsDB.global.pendingReopenAction = nil
-    end
 end
 
 function AP:GetEffectiveMaxLevel()
@@ -453,7 +447,6 @@ function AP:ShowReloadDialog(options)
     local popup = StaticPopup_Show("AP_RELOAD_DIALOG")
     if popup then
         popup.text:SetText(options.text)
-        popup.data = options.action
     end
 end
 
