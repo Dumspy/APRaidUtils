@@ -3,6 +3,38 @@ local AP = _G["APRaidUtils"]
 local RosterManager = {}
 AP.RosterManager = RosterManager
 
+local function NormalizeRealmForKey(realmName)
+    if not realmName or realmName == "" then
+        return ""
+    end
+
+    return realmName:gsub("[%s%-']", ""):lower()
+end
+
+local function GetNormalizedRealmNameSafe()
+    local realmName = nil
+    if GetNormalizedRealmName then
+        realmName = GetNormalizedRealmName()
+        if realmName and realmName ~= "" then
+            return NormalizeRealmForKey(realmName)
+        end
+    end
+
+    return NormalizeRealmForKey(GetRealmName() or "")
+end
+
+local function BuildFullPlayerName(name, realm)
+    if not name or name == "" then
+        return nil
+    end
+
+    if realm and realm ~= "" then
+        return name .. "-" .. realm
+    end
+
+    return name
+end
+
 function RosterManager:GetPreparedRoster(rosterString)
     if not rosterString or strtrim(rosterString) == "" then
         return nil, 0, "Error: No roster provided"
@@ -26,7 +58,10 @@ function RosterManager:ParseRoster(rosterString)
     for nameRealm in string.gmatch(rosterString, "[^;]+") do
         local trimmed = strtrim(nameRealm)
         if trimmed ~= "" then
-            roster[trimmed] = true
+            local normalized = self:NormalizePlayerName(trimmed)
+            if normalized then
+                roster[normalized] = trimmed
+            end
         end
     end
     return roster
@@ -52,29 +87,75 @@ function RosterManager:GetCurrentRaidMembers()
     return members
 end
 
-function RosterManager:NormalizePlayerName(name)
-    if not name then return nil end
-    if not string.find(name, "-") then
-        local realm = GetRealmName()
-        realm = realm:gsub("%s+", "")
-        return name .. "-" .. realm
+function RosterManager:GetCurrentGroupMembers()
+    if IsInRaid() then
+        return self:GetCurrentRaidMembers()
     end
-    return name
+
+    local members = {}
+    local function AddMember(unit)
+        if not UnitExists(unit) then
+            return
+        end
+
+        local name, realm = UnitFullName(unit)
+        if not name then
+            name = UnitName(unit)
+        end
+
+        local fullName = BuildFullPlayerName(name, realm)
+        if fullName then
+            table.insert(members, { name = fullName })
+        end
+    end
+
+    AddMember("player")
+
+    if IsInGroup() then
+        local numMembers = GetNumSubgroupMembers()
+        for i = 1, numMembers do
+            AddMember("party" .. i)
+        end
+    end
+
+    return members
+end
+
+function RosterManager:NormalizePlayerName(name)
+    if not name then
+        return nil
+    end
+
+    local trimmedName = strtrim(name)
+    if trimmedName == "" then
+        return nil
+    end
+
+    local playerName, realm = trimmedName:match("^([^%-]+)%-(.+)$")
+    if playerName then
+        playerName = strtrim(playerName)
+        realm = NormalizeRealmForKey(strtrim(realm))
+    else
+        playerName = trimmedName
+        realm = GetNormalizedRealmNameSafe()
+    end
+
+    return playerName:lower() .. "-" .. realm
 end
 
 function RosterManager:InviteMissing(roster)
     local invited = 0
-    local currentMembers = self:GetCurrentRaidMembers()
-    local alreadyInRaid = {}
+    local currentMembers = self:GetCurrentGroupMembers()
+    local alreadyPresent = {}
     
     for _, member in pairs(currentMembers) do
         local normalized = self:NormalizePlayerName(member.name)
-        alreadyInRaid[normalized] = true
+        alreadyPresent[normalized] = true
     end
     
-    for nameRealm, _ in pairs(roster) do
-        if not alreadyInRaid[nameRealm] then
-            C_PartyInfo.InviteUnit(nameRealm)
+    for normalizedName, inviteName in pairs(roster) do
+        if not alreadyPresent[normalizedName] then
+            C_PartyInfo.InviteUnit(inviteName)
             invited = invited + 1
         end
     end
@@ -133,29 +214,31 @@ function RosterManager:GetRosterPreview(rosterString)
         return nil, errorMessage
     end
 
-    local currentMembers = self:GetCurrentRaidMembers()
-    local alreadyInRaid = {}
+    local currentMembers = self:GetCurrentGroupMembers()
+    local alreadyPresent = {}
     
     for _, member in pairs(currentMembers) do
         local normalized = self:NormalizePlayerName(member.name)
-        alreadyInRaid[normalized] = true
+        alreadyPresent[normalized] = true
     end
     
     local missing = {}
-    for nameRealm, _ in pairs(roster) do
-        if not alreadyInRaid[nameRealm] then
-            table.insert(missing, nameRealm)
+    for normalizedName, inviteName in pairs(roster) do
+        if not alreadyPresent[normalizedName] then
+            table.insert(missing, inviteName)
         end
     end
     
     local toMoveOut = {}
     local toMoveIn = {}
-    for _, member in pairs(currentMembers) do
-        local normalized = self:NormalizePlayerName(member.name)
-        if roster[normalized] and member.subgroup >= 7 then
-            table.insert(toMoveIn, member.name .. " (Group " .. member.subgroup .. " → 1-4)")
-        elseif not roster[normalized] and member.subgroup < 7 then
-            table.insert(toMoveOut, member.name .. " (Group " .. member.subgroup .. " → 7/8)")
+    if IsInRaid() then
+        for _, member in pairs(self:GetCurrentRaidMembers()) do
+            local normalized = self:NormalizePlayerName(member.name)
+            if roster[normalized] and member.subgroup >= 7 then
+                table.insert(toMoveIn, member.name .. " (Group " .. member.subgroup .. " → 1-4)")
+            elseif not roster[normalized] and member.subgroup < 7 then
+                table.insert(toMoveOut, member.name .. " (Group " .. member.subgroup .. " → 7/8)")
+            end
         end
     end
     
