@@ -1954,7 +1954,6 @@ function AP:ShowReloadDialog(options)
     textLabel:SetText(options.text)
 
     local reloadButton = framework:CreateButton(reloadDialogFrame, function()
-        AP.db.global.pendingReopenAction = options.action
         if APRaidUtilsDB then
             APRaidUtilsDB.global.pendingReopenAction = options.action
         end
@@ -1992,6 +1991,12 @@ local function BuildMainWindow()
     })
     mainWindow:SetPoint("CENTER")
     mainWindow:SetFrameStrata("HIGH")
+    mainWindow:HookScript("OnHide", function()
+        local anchorModule = AP.APAnchor
+        if anchorModule and anchorModule.IsAnchorsVisible and anchorModule:IsAnchorsVisible() then
+            anchorModule:HideAllAnchors()
+        end
+    end)
 
     mainTabs = framework:CreateTabContainer(mainWindow, "APRaidUtils", "APRaidUtilsMainTabs", tabList, {
         width = 1196,
@@ -2057,9 +2062,9 @@ local reopenFrame = CreateFrame("Frame")
 reopenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 reopenFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
-        local action = AP.db and AP.db.global and AP.db.global.pendingReopenAction
+        local action = APRaidUtilsDB and APRaidUtilsDB.global and APRaidUtilsDB.global.pendingReopenAction
         if action then
-            AP.db.global.pendingReopenAction = nil
+            APRaidUtilsDB.global.pendingReopenAction = nil
             if AP.OpenMainWindow then
                 AP:OpenMainWindow("Reminders")
             end

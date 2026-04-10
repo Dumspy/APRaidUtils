@@ -25,6 +25,8 @@ local simcRequiredEquipmentSlots = {
     "main_hand",
     "off_hand",
 }
+local addonVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
+local IsDevVersion = (addonVersion == "@project-version@")
 
 local function GetSimcLineValue(exportText, prefix)
     return exportText:match("\n" .. prefix .. "([^\n]*)") or exportText:match("^" .. prefix .. "([^\n]*)")
@@ -73,7 +75,6 @@ local function InitializeSavedVariables()
     APRaidUtilsDB = APRaidUtilsDB or {}
     APRaidUtilsDB.profile = APRaidUtilsDB.profile or {}
     APRaidUtilsDB.global = APRaidUtilsDB.global or {}
-    APRaidUtilsDB.global.pendingReopenAction = nil
     APRaidUtilsDB.global.simc = APRaidUtilsDB.global.simc or {
         characters = {},
         exports = {},
@@ -88,7 +89,7 @@ function AP:OnAddonLoaded()
     InitializeSavedVariables()
     self:CleanupSimcData()
 
-    if AP.Comms then
+    if not IsDevVersion and AP.Comms then
         AP.Comms:RegisterCallback("CHECK_UPDATE", function(event, sender, distribution, data)
             local theirVersion = data and data.versions and data.versions.APRaidUtils
             local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
@@ -106,9 +107,11 @@ function AP:OnPlayerLogin()
     self:RegisterCurrentCharacter()
     self:NotifyOptionsChanged()
 
-    if IsInGuild() and AP.Comms then
+    if IsInGuild() and not IsDevVersion then
         local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
-        AP.Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
+        if AP.Comms then
+            AP.Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
+        end
     end
 end
 

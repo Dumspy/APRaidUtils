@@ -183,9 +183,6 @@ function AuraBuilder:CreateDefaultTemplate()
             start = {
                 do_sound = true,
                 sound = { type = "SoundFile", path = 567496 },
-                do_message = true,
-                message = "Watch out for %n!",
-                message_type = "Custom",
             },
             finish = {},
         },
@@ -601,12 +598,6 @@ function AuraBuilder:BuildAuraData(rule, definition)
         class = { multi = {} },
         talent = { multi = {} },
     }
-
-    if aura.actions and aura.actions.start then
-        aura.actions.start.do_message = true
-        aura.actions.start.message = rule.text or ""
-        aura.actions.start.message_type = "Custom"
-    end
 
     return aura
 end
