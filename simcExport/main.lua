@@ -3,6 +3,9 @@ local AP = _G["APRaidUtils"]
 local SimcExport = {}
 AP.SimcExport = SimcExport
 
+local LOGIN_CAPTURE_DELAY_SECONDS = 5
+local CHANGE_CAPTURE_DELAY_SECONDS = 2
+
 function SimcExport:GetSimulationcraftAddon()
     if C_AddOns and C_AddOns.IsAddOnLoaded and not C_AddOns.IsAddOnLoaded("Simulationcraft") then
         return nil, "Simulationcraft must be installed and enabled."
@@ -156,29 +159,47 @@ function SimcExport:GetAutomaticCaptureCharacterInfo(silent)
     return characterInfo
 end
 
-function SimcExport:ScheduleAutomaticCapture()
-    if self.loginCaptureTimer and self.loginCaptureTimer.Cancel then
-        self.loginCaptureTimer:Cancel()
+function SimcExport:CancelAutomaticCaptureTimer()
+    if self.automaticCaptureTimer and self.automaticCaptureTimer.Cancel then
+        self.automaticCaptureTimer:Cancel()
     end
 
-    local characterInfo = self:GetAutomaticCaptureCharacterInfo(true)
-    if not characterInfo then
-        self.loginCaptureTimer = nil
+    self.automaticCaptureTimer = nil
+end
+
+function SimcExport:RunAutomaticCapture()
+    if self.captureInProgress then
+        self:ScheduleAutomaticCapture(CHANGE_CAPTURE_DELAY_SECONDS)
         return
     end
 
-    self.loginCaptureTimer = C_Timer.NewTimer(5, function()
-        self.loginCaptureTimer = nil
+    local refreshedCharacterInfo = self:GetAutomaticCaptureCharacterInfo(true)
+    if not refreshedCharacterInfo then
+        return
+    end
 
-        local refreshedCharacterInfo = self:GetAutomaticCaptureCharacterInfo(true)
-        if not refreshedCharacterInfo then
-            return
-        end
+    local didStart = self:CaptureCurrentCharacterViaCommand(refreshedCharacterInfo, true)
+    if didStart or self.captureInProgress then
+        return
+    end
 
-        local didStart = self:CaptureCurrentCharacterViaCommand(refreshedCharacterInfo, true)
-        if not didStart then
-            self:CaptureCurrentCharacter(true)
-        end
+    local didCapture = self:CaptureCurrentCharacter(true)
+    if didCapture and self.RefreshUI then
+        self:RefreshUI()
+    end
+end
+
+function SimcExport:ScheduleAutomaticCapture(delaySeconds)
+    self:CancelAutomaticCaptureTimer()
+
+    local characterInfo = self:GetAutomaticCaptureCharacterInfo(true)
+    if not characterInfo then
+        return
+    end
+
+    self.automaticCaptureTimer = C_Timer.NewTimer(delaySeconds or LOGIN_CAPTURE_DELAY_SECONDS, function()
+        self.automaticCaptureTimer = nil
+        self:RunAutomaticCapture()
     end)
 end
 
@@ -187,7 +208,24 @@ function SimcExport:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
         return
     end
 
-    self:ScheduleAutomaticCapture()
+    self:ScheduleAutomaticCapture(LOGIN_CAPTURE_DELAY_SECONDS)
+end
+
+function SimcExport:OnPlayerEquipmentChanged()
+    self:ScheduleAutomaticCapture(CHANGE_CAPTURE_DELAY_SECONDS)
+end
+
+function SimcExport:OnTraitConfigUpdated(configID)
+    local activeConfigID = C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()
+    if activeConfigID and configID and configID ~= activeConfigID then
+        return
+    end
+
+    self:ScheduleAutomaticCapture(CHANGE_CAPTURE_DELAY_SECONDS)
+end
+
+function SimcExport:OnActivePlayerSpecializationChanged()
+    self:ScheduleAutomaticCapture(CHANGE_CAPTURE_DELAY_SECONDS)
 end
 
 function SimcExport:CaptureCurrentCharacter(silent)

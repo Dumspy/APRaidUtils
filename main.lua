@@ -54,6 +54,11 @@ local function GetNormalizedRealmNameSafe()
 end
 
 local function WrapTextInClassColor(classFile, text)
+    if type(classFile) == "number" then
+        local classInfo = C_CreatureInfo and C_CreatureInfo.GetClassInfo and C_CreatureInfo.GetClassInfo(classFile)
+        classFile = classInfo and classInfo.classFile or (GetClassInfo and select(2, GetClassInfo(classFile))) or classFile
+    end
+
     local colorTable = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
     local classColor = colorTable and classFile and colorTable[classFile]
     if not classColor or not text or text == "" then
@@ -69,6 +74,47 @@ local function WrapTextInClassColor(classFile, text)
     end
 
     return text
+end
+
+local function NormalizeClassFile(classFile)
+    if type(classFile) == "string" then
+        if classFile ~= "" then
+            return classFile
+        end
+
+        return nil
+    end
+
+    if type(classFile) ~= "number" then
+        return nil
+    end
+
+    local classInfo = C_CreatureInfo and C_CreatureInfo.GetClassInfo and C_CreatureInfo.GetClassInfo(classFile)
+    if classInfo and classInfo.classFile and classInfo.classFile ~= "" then
+        return classInfo.classFile
+    end
+
+    if GetClassInfo then
+        local _, normalizedClassFile = GetClassInfo(classFile)
+        if normalizedClassFile and normalizedClassFile ~= "" then
+            return normalizedClassFile
+        end
+    end
+
+    return nil
+end
+
+local function NormalizeSimcCharacter(character)
+    if type(character) ~= "table" then
+        return nil
+    end
+
+    local normalizedClassFile = NormalizeClassFile(character.classFile)
+    if normalizedClassFile then
+        character.classFile = normalizedClassFile
+    end
+
+    return character
 end
 
 local function InitializeSavedVariables()
@@ -174,15 +220,17 @@ function AP:GetCharacterNameText(character)
 end
 
 function AP:GetCharacterDisplayName(character)
+    NormalizeSimcCharacter(character)
     return WrapTextInClassColor(character and character.classFile, self:GetCharacterNameText(character))
 end
 
 function AP:GetCharacterClassText(character)
-    if not character or not character.classFile then
+    local normalizedCharacter = NormalizeSimcCharacter(character)
+    if not normalizedCharacter or not normalizedCharacter.classFile then
         return ""
     end
 
-    return LOCALIZED_CLASS_NAMES_MALE[character.classFile] or LOCALIZED_CLASS_NAMES_FEMALE[character.classFile] or character.classFile
+    return LOCALIZED_CLASS_NAMES_MALE[normalizedCharacter.classFile] or LOCALIZED_CLASS_NAMES_FEMALE[normalizedCharacter.classFile] or normalizedCharacter.classFile
 end
 
 function AP:GetCharacterSpecializationText(character, specName)
@@ -205,6 +253,7 @@ function AP:GetPlayerCharacterInfo()
     local normalizedRealm = GetNormalizedRealmNameSafe()
     local level = UnitLevel("player") or 0
     local _, classFile = UnitClassBase("player")
+    classFile = NormalizeClassFile(classFile) or classFile
 
     local specIndex = nil
     if C_SpecializationInfo and C_SpecializationInfo.GetSpecialization then
@@ -276,6 +325,8 @@ function AP:CleanupSimcData()
     local maxLevel = self:GetEffectiveMaxLevel()
 
     for characterKey, character in pairs(simc.characters) do
+        NormalizeSimcCharacter(character)
+
         if type(character) ~= "table" or not character.name or (character.level or 0) < maxLevel then
             simc.characters[characterKey] = nil
             simc.exports[characterKey] = nil
@@ -303,10 +354,11 @@ function AP:RegisterCurrentCharacter()
     end
 
     local existing = simc.characters[characterInfo.key] or {}
+    local classFile = NormalizeClassFile(characterInfo.classFile) or NormalizeClassFile(existing.classFile) or characterInfo.classFile or existing.classFile
     simc.characters[characterInfo.key] = {
         name = characterInfo.name,
         realm = characterInfo.realm,
-        classFile = characterInfo.classFile,
+        classFile = classFile,
         specName = characterInfo.specName,
         level = characterInfo.level,
         enabled = existing.enabled == true,
@@ -317,12 +369,14 @@ function AP:RegisterCurrentCharacter()
 end
 
 function AP:GetSimcCharacter(characterKey)
-    return self:GetSimcStorage().characters[characterKey]
+    return NormalizeSimcCharacter(self:GetSimcStorage().characters[characterKey])
 end
 
 function AP:GetSimcCharacters()
     local characters = {}
     for characterKey, character in pairs(self:GetSimcStorage().characters) do
+        NormalizeSimcCharacter(character)
+
         characters[#characters + 1] = {
             key = characterKey,
             name = character.name,
@@ -390,6 +444,10 @@ function AP:SaveSimcExport(characterInfo, exportText)
     end
 
     local updatedAt = time()
+    local normalizedClassFile = NormalizeClassFile(characterInfo.classFile) or NormalizeClassFile(character.classFile) or characterInfo.classFile or character.classFile
+    character.name = characterInfo.name
+    character.realm = characterInfo.realm
+    character.classFile = normalizedClassFile
     character.specName = characterInfo.specName
     character.level = characterInfo.level
     character.lastSeen = updatedAt
