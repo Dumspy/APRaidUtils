@@ -31,7 +31,7 @@
             shellHook = ''
               # Copy WoW API annotations to local folder for editor/agent access
               mkdir -p .lua-libs
-              rm -rf .lua-libs/wow-api
+              rm -rf .lua-libs/wow-api 2>/dev/null || true
               cp -r "${wow-api-path}" .lua-libs/wow-api
               echo "WoW API annotations: .lua-libs/wow-api"
             '';
