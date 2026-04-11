@@ -69,17 +69,6 @@ APRaidUtils/
 - Version checker collects more fields than the UI renders; `MRTNoteHash` and `IgnoredRaiders` stay off-table today.
 - Anchor editing is its own subsystem with persisted detached settings-panel position under `APRaidUtilsDB.profile.anchors`.
 
-## COMMANDS
-
-```text
-/reload
-/ap
-git tag vX.Y.Z
-git push origin vX.Y.Z
-nix develop          # Enter dev shell
-direnv allow         # Auto-load shell on entry
-```
-
 ## TOOLING
 
 This repo uses repo-owned Lua tooling for consistent editor/AI support.

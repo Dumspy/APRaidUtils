@@ -13,10 +13,12 @@
   "workspace.checkThirdParty": false,
   "workspace.ignoreDir": [
     ".git",
-    "libs"
+    "libs",
+    ".lua-libs"
   ],
   "workspace.library": [
-    "meta"
+    "meta",
+    ".lua-libs/wow-api"
   ],
   "diagnostics.globals": [
     "APRaidUtilsDB",

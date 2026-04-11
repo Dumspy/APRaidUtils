@@ -37,7 +37,8 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "wow-api": "wow-api"
       }
     },
     "systems": {
@@ -52,6 +53,22 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "wow-api": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1775704159,
+        "narHash": "sha256-1Libtx4xOc3UqU8Kb+0dToJK+dlVUfLyBCV135mRG7g=",
+        "owner": "Ketho",
+        "repo": "vscode-wow-api",
+        "rev": "539c3b2281261ba37fe9157ee067b188f0fa21d3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Ketho",
+        "repo": "vscode-wow-api",
         "type": "github"
       }
     }
