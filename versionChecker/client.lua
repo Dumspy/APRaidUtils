@@ -1,15 +1,15 @@
 -- BASED ON https://wago.io/exrYkN05u
 
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local Comms = AP:GetModule("Comms")
-local VersionChecker = AP:GetModule("VersionChecker")
+local AP = _G["APRaidUtils"]
+local Comms = AP.Comms
+local VersionChecker = AP.VersionChecker
 
-Comms:RegisterCallback("QUERY_VERSION", function(event, sender, distribution, data)
-    local versions = VersionChecker:GetAllVersions()
-    Comms:Whisper("VERSION_INFO", sender, {response = "VERSION_INFO", versions = versions})
-end)
-
--- All version checker logic below
+if Comms then
+    Comms:RegisterCallback("QUERY_VERSION", function(event, sender, distribution, data)
+        local versions = VersionChecker:GetAllVersions()
+        Comms:Whisper("VERSION_INFO", sender, {response = "VERSION_INFO", versions = versions})
+    end)
+end
 
 local function StringHash(text)
     local counter = 1
@@ -103,7 +103,6 @@ function VersionChecker:GetIgnoredRaiders()
                 table.insert(ignoredRaiders, name)
             end
         end
-        -- Also check the player themselves
         local guid = UnitGUID("player")
         local name = UnitName("player")
         if guid and C_FriendList.IsIgnoredByGuid(guid) then

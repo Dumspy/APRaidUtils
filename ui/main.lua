@@ -1,4 +1,4 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local AP = _G["APRaidUtils"]
 
 local mainWindow
 local mainTabs
@@ -226,7 +226,7 @@ local function CreateSectionLabel(parent, anchor, text, offsetY)
 end
 
 local function CaptureCurrentCharacter()
-    local simcExport = AP:GetModule("SimcExport", true)
+    local simcExport = AP.SimcExport
     if simcExport and simcExport.ManualCapture then
         simcExport:ManualCapture()
         return
@@ -316,7 +316,7 @@ local function CaptureCurrentCharacterFromTab()
 end
 
 local function GetRosterManager()
-    return AP:GetModule("RosterManager", true)
+    return AP.RosterManager
 end
 
 local function GetRosterInputText()
@@ -560,7 +560,7 @@ local function RefreshVersionsLines(scrollBox, data, offset, totalLines)
 end
 
 local function RequestVersionCheckFromTab()
-    local versionChecker = AP:GetModule("VersionChecker", true)
+    local versionChecker = AP.VersionChecker
     if versionChecker and versionChecker.RequestVersionCheck then
         versionChecker:RequestVersionCheck()
         return
@@ -626,7 +626,7 @@ local function SelectObservedReminderRaid(instanceName)
     remindersSelectedTimerKey = nil
     remindersSelectedRuleId = nil
     remindersCreatingNewRule = false
-    local reminders = AP:GetModule("Reminders", true)
+    local reminders = AP.Reminders
     if reminders and reminders.PrimeReminderData then
         reminders:PrimeReminderData(remindersSelectedRaidFilter)
     end
@@ -1057,7 +1057,7 @@ local function EnsureReminderRuleSelectionVisible(ruleRows)
 end
 
 local function SaveReminderRuleFromUI()
-    local reminders = AP:GetModule("Reminders", true)
+    local reminders = AP.Reminders
     if not reminders then
         return
     end
@@ -1085,7 +1085,6 @@ local function SaveReminderRuleFromUI()
         if AP.ShowReloadDialog then
             AP:ShowReloadDialog({
                 text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
-                action = "reminder_creation",
             })
         end
     end
@@ -1094,7 +1093,7 @@ local function SaveReminderRuleFromUI()
 end
 
 local function DeleteReminderRuleFromUI()
-    local reminders = AP:GetModule("Reminders", true)
+    local reminders = AP.Reminders
     if not reminders then
         return
     end
@@ -1118,7 +1117,7 @@ local function DeleteReminderRuleFromUI()
 end
 
 local function CreateReminderForTimer(timerKey)
-    local reminders = AP:GetModule("Reminders", true)
+    local reminders = AP.Reminders
     if not reminders then
         return
     end
@@ -1142,14 +1141,13 @@ local function CreateReminderForTimer(timerKey)
         if AP.ShowReloadDialog then
             AP:ShowReloadDialog({
                 text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
-                action = "reminder_creation",
             })
         end
     end
 end
 
 local function CreateReminderForTimer(timerKey)
-    local Reminders = AP:GetModule("Reminders", true)
+    local Reminders = AP.Reminders
     if not Reminders then
         return
     end
@@ -1173,7 +1171,6 @@ local function CreateReminderForTimer(timerKey)
         if AP.ShowReloadDialog then
             AP:ShowReloadDialog({
                 text = "The reminder has been created in M33kAuras. Reload UI to see changes take effect.",
-                action = "reminder_creation",
             })
         end
     end
@@ -1758,7 +1755,7 @@ local function BuildRemindersTab(framework, parent)
     remindersRaidDropdown = framework:CreateDropDown(
         remindersBrowserFrame,
         function()
-            local reminders = AP:GetModule("Reminders", true)
+            local reminders = AP.Reminders
             local options = {}
             if not reminders or not reminders.GetRaidFilterItems then
                 return options
@@ -1789,7 +1786,7 @@ local function BuildRemindersTab(framework, parent)
     remindersBossDropdown = framework:CreateDropDown(
         remindersBrowserFrame,
         function()
-            local reminders = AP:GetModule("Reminders", true)
+            local reminders = AP.Reminders
             local options = {}
             if not reminders or not reminders.GetBossFilterItems then
                 return options
@@ -1918,9 +1915,6 @@ function AP:ShowReloadDialog(options)
             button1 = "Reload UI",
             button2 = "Later",
             OnAccept = function()
-                if APRaidUtilsDB then
-                    APRaidUtilsDB.global.pendingReopenAction = options.action
-                end
                 ReloadUI()
             end,
             timeout = 0,
@@ -1954,10 +1948,6 @@ function AP:ShowReloadDialog(options)
     textLabel:SetText(options.text)
 
     local reloadButton = framework:CreateButton(reloadDialogFrame, function()
-        AP.db.global.pendingReopenAction = options.action
-        if APRaidUtilsDB then
-            APRaidUtilsDB.global.pendingReopenAction = options.action
-        end
         reloadDialogFrame:Hide()
         reloadDialogFrame = nil
         ReloadUI()
@@ -1993,7 +1983,7 @@ local function BuildMainWindow()
     mainWindow:SetPoint("CENTER")
     mainWindow:SetFrameStrata("HIGH")
     mainWindow:HookScript("OnHide", function()
-        local anchorModule = AP:GetModule("APAnchor", true)
+        local anchorModule = AP.APAnchor
         if anchorModule and anchorModule.IsAnchorsVisible and anchorModule:IsAnchorsVisible() then
             anchorModule:HideAllAnchors()
         end
@@ -2059,20 +2049,6 @@ function AP:ToggleMainWindow(tabName)
     end
 end
 
-local reopenFrame = CreateFrame("Frame")
-reopenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-reopenFrame:SetScript("OnEvent", function(self, event)
-    if event == "PLAYER_ENTERING_WORLD" then
-        local action = AP.db and AP.db.global and AP.db.global.pendingReopenAction
-        if action then
-            AP.db.global.pendingReopenAction = nil
-            if AP.OpenMainWindow then
-                AP:OpenMainWindow("Reminders")
-            end
-        end
-    end
-end)
-
 function AP:RefreshSettingsTab()
     if settingsTab and settingsTab.RefreshOptions then
         settingsTab:RefreshOptions()
@@ -2084,7 +2060,7 @@ function AP:RefreshVersionsTab()
         return
     end
 
-    local versionChecker = self:GetModule("VersionChecker", true)
+    local versionChecker = self.VersionChecker
     if not versionChecker then
         return
     end
@@ -2104,12 +2080,12 @@ function AP:RefreshRemindersTab()
         return
     end
 
-    local reminders = self:GetModule("Reminders", true)
+    local reminders = self.Reminders
     if not reminders then
         return
     end
 
-    local AuraBuilder = self:GetModule("AuraBuilder", true)
+    local AuraBuilder = self.AuraBuilder
     local status, statusMsg = reminders:GetM33kAurasStatus()
     local ready = (status == "ok")
 
@@ -2157,10 +2133,6 @@ function AP:RefreshRemindersTab()
         return
     end
 
-    if reminders.PrimeReminderData then
-        reminders:PrimeReminderData(remindersSelectedRaidFilter)
-    end
-
     if remindersRaidDropdown and reminders.GetRaidFilterItems then
         local raidItems = reminders:GetRaidFilterItems(remindersOnlyCurrentExpansion)
         local hasSelectedRaid = remindersSelectedRaidFilter == "ALL"
@@ -2175,6 +2147,10 @@ function AP:RefreshRemindersTab()
         end
         remindersRaidDropdown:Refresh()
         remindersRaidDropdown:Select(remindersSelectedRaidFilter, false, false, false)
+    end
+
+    if reminders.PrimeReminderData then
+        reminders:PrimeReminderData(remindersSelectedRaidFilter)
     end
 
     if remindersBossDropdown and reminders.GetBossFilterItems then

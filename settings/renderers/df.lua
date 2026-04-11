@@ -1,4 +1,4 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local AP = _G["APRaidUtils"]
 
 local function ResolveValue(value)
     if type(value) == "function" then

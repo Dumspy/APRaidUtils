@@ -1,22 +1,11 @@
-APRaidUtils = LibStub("AceAddon-3.0"):NewAddon("APRaidUtils", "AceConsole-3.0", "AceEvent-3.0")
+local AP = {}
+_G["APRaidUtils"] = AP
+_G["AP"] = AP
 
-local AceDB = LibStub("AceDB-3.0")
-local Comms = nil
-
-local addonVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
-local IsDevVersion = (addonVersion == "@project-version@")
-
-local defaults = {
-    profile = {
-    },
-    global = {
-        pendingReopenAction = nil,
-        simc = {
-            characters = {},
-            exports = {},
-        },
-    },
-}
+local eventFrame = CreateFrame("Frame")
+AP.eventFrame = eventFrame
+eventFrame:SetAllPoints(UIParent)
+eventFrame:SetFrameStrata("BACKGROUND")
 
 local simcRequiredEquipmentSlots = {
     "head",
@@ -36,6 +25,8 @@ local simcRequiredEquipmentSlots = {
     "main_hand",
     "off_hand",
 }
+local addonVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
+local IsDevVersion = (addonVersion == "@project-version@")
 
 local function GetSimcLineValue(exportText, prefix)
     return exportText:match("\n" .. prefix .. "([^\n]*)") or exportText:match("^" .. prefix .. "([^\n]*)")
@@ -63,6 +54,11 @@ local function GetNormalizedRealmNameSafe()
 end
 
 local function WrapTextInClassColor(classFile, text)
+    if type(classFile) == "number" then
+        local classInfo = C_CreatureInfo and C_CreatureInfo.GetClassInfo and C_CreatureInfo.GetClassInfo(classFile)
+        classFile = classInfo and classInfo.classFile or (GetClassInfo and select(2, GetClassInfo(classFile))) or classFile
+    end
+
     local colorTable = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
     local classColor = colorTable and classFile and colorTable[classFile]
     if not classColor or not text or text == "" then
@@ -80,38 +76,100 @@ local function WrapTextInClassColor(classFile, text)
     return text
 end
 
-function APRaidUtils:OnInitialize()
-    self.db = AceDB:New("APRaidUtilsDB", defaults, true)
-    self:CleanupSimcData()
-    Comms = self:GetModule("Comms")
-    self:RegisterChatCommand("ap", "HandleChatCommand")
+local function NormalizeClassFile(classFile)
+    if type(classFile) == "string" then
+        if classFile ~= "" then
+            return classFile
+        end
 
-    self:Print("Loaded")
-    self:RegisterEvent("PLAYER_LOGIN", "OnPlayerLogin")
-    
-    if not IsDevVersion then
-        Comms:RegisterCallback("CHECK_UPDATE", function(event, sender, distribution, data)
+        return nil
+    end
+
+    if type(classFile) ~= "number" then
+        return nil
+    end
+
+    local classInfo = C_CreatureInfo and C_CreatureInfo.GetClassInfo and C_CreatureInfo.GetClassInfo(classFile)
+    if classInfo and classInfo.classFile and classInfo.classFile ~= "" then
+        return classInfo.classFile
+    end
+
+    if GetClassInfo then
+        local _, normalizedClassFile = GetClassInfo(classFile)
+        if normalizedClassFile and normalizedClassFile ~= "" then
+            return normalizedClassFile
+        end
+    end
+
+    return nil
+end
+
+local function NormalizeSimcCharacter(character)
+    if type(character) ~= "table" then
+        return nil
+    end
+
+    local normalizedClassFile = NormalizeClassFile(character.classFile)
+    if normalizedClassFile then
+        character.classFile = normalizedClassFile
+    end
+
+    return character
+end
+
+local function InitializeSavedVariables()
+    APRaidUtilsDB = APRaidUtilsDB or {}
+    APRaidUtilsDB.profile = APRaidUtilsDB.profile or {}
+    APRaidUtilsDB.global = APRaidUtilsDB.global or {}
+    APRaidUtilsDB.global.simc = APRaidUtilsDB.global.simc or {
+        characters = {},
+        exports = {},
+    }
+end
+
+function AP:Print(...)
+    print("|cFFFFD100APRaidUtils|r:", ...)
+end
+
+function AP:OnAddonLoaded()
+    InitializeSavedVariables()
+    self:CleanupSimcData()
+
+    if not IsDevVersion and AP.Comms then
+        AP.Comms:RegisterCallback("CHECK_UPDATE", function(event, sender, distribution, data)
             local theirVersion = data and data.versions and data.versions.APRaidUtils
             local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
-            if theirVersion and myVersion and IsVersionNewer(theirVersion, myVersion) then
-                APRaidUtils:Print("A newer version of APRaidUtils is available: " .. theirVersion)
+            if theirVersion and myVersion and self:IsVersionNewer(theirVersion, myVersion) then
+                self:Print("A newer version of APRaidUtils is available: " .. theirVersion)
             end
         end)
     end
+
+    self:Print("Loaded")
 end
 
-function APRaidUtils:OnPlayerLogin()
+function AP:OnPlayerLogin()
     self:CleanupSimcData()
     self:RegisterCurrentCharacter()
     self:NotifyOptionsChanged()
 
     if IsInGuild() and not IsDevVersion then
         local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
-        Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
+        if AP.Comms then
+            AP.Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
+        end
     end
 end
 
-function APRaidUtils:GetEffectiveMaxLevel()
+function AP:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
+    if isInitialLogin or isReloadingUi then
+        self:CleanupSimcData()
+        self:RegisterCurrentCharacter()
+        self:NotifyOptionsChanged()
+    end
+end
+
+function AP:GetEffectiveMaxLevel()
     if GameRulesUtil and GameRulesUtil.GetEffectiveMaxLevelForPlayer then
         return GameRulesUtil.GetEffectiveMaxLevelForPlayer()
     end
@@ -127,7 +185,7 @@ function APRaidUtils:GetEffectiveMaxLevel()
     return 0
 end
 
-function APRaidUtils:IsMaxLevel(level)
+function AP:IsMaxLevel(level)
     local maxLevel = self:GetEffectiveMaxLevel()
     if maxLevel <= 0 then
         return false
@@ -136,7 +194,7 @@ function APRaidUtils:IsMaxLevel(level)
     return (level or 0) >= maxLevel
 end
 
-function APRaidUtils:GetCharacterKey(name, realm)
+function AP:GetCharacterKey(name, realm)
     if not name or name == "" then
         return nil
     end
@@ -149,7 +207,7 @@ function APRaidUtils:GetCharacterKey(name, realm)
     return name .. "-" .. characterRealm
 end
 
-function APRaidUtils:GetCharacterNameText(character)
+function AP:GetCharacterNameText(character)
     if not character or not character.name then
         return ""
     end
@@ -161,19 +219,21 @@ function APRaidUtils:GetCharacterNameText(character)
     return character.name
 end
 
-function APRaidUtils:GetCharacterDisplayName(character)
+function AP:GetCharacterDisplayName(character)
+    NormalizeSimcCharacter(character)
     return WrapTextInClassColor(character and character.classFile, self:GetCharacterNameText(character))
 end
 
-function APRaidUtils:GetCharacterClassText(character)
-    if not character or not character.classFile then
+function AP:GetCharacterClassText(character)
+    local normalizedCharacter = NormalizeSimcCharacter(character)
+    if not normalizedCharacter or not normalizedCharacter.classFile then
         return ""
     end
 
-    return LOCALIZED_CLASS_NAMES_MALE[character.classFile] or LOCALIZED_CLASS_NAMES_FEMALE[character.classFile] or character.classFile
+    return LOCALIZED_CLASS_NAMES_MALE[normalizedCharacter.classFile] or LOCALIZED_CLASS_NAMES_FEMALE[normalizedCharacter.classFile] or normalizedCharacter.classFile
 end
 
-function APRaidUtils:GetCharacterSpecializationText(character, specName)
+function AP:GetCharacterSpecializationText(character, specName)
     local specialization = specName or (character and character.specName)
     if not specialization or specialization == "" then
         return ""
@@ -187,12 +247,13 @@ function APRaidUtils:GetCharacterSpecializationText(character, specName)
     return specialization
 end
 
-function APRaidUtils:GetPlayerCharacterInfo()
+function AP:GetPlayerCharacterInfo()
     local name = UnitName("player")
     local realm = GetRealmName() or ""
     local normalizedRealm = GetNormalizedRealmNameSafe()
     local level = UnitLevel("player") or 0
-    local _, classFile = UnitClass("player")
+    local _, classFile = UnitClassBase("player")
+    classFile = NormalizeClassFile(classFile) or classFile
 
     local specIndex = nil
     if C_SpecializationInfo and C_SpecializationInfo.GetSpecialization then
@@ -219,11 +280,11 @@ function APRaidUtils:GetPlayerCharacterInfo()
     }
 end
 
-function APRaidUtils:GetSimcStorage()
-    return self.db.global.simc
+function AP:GetSimcStorage()
+    return APRaidUtilsDB and APRaidUtilsDB.global and APRaidUtilsDB.global.simc or { characters = {}, exports = {} }
 end
 
-function APRaidUtils:IsSimcExportValid(exportText)
+function AP:IsSimcExportValid(exportText)
     if not exportText or exportText == "" then
         return false
     end
@@ -256,11 +317,16 @@ function APRaidUtils:IsSimcExportValid(exportText)
     return false
 end
 
-function APRaidUtils:CleanupSimcData()
+function AP:CleanupSimcData()
+    if self._simcCleanupDone then return end
+    self._simcCleanupDone = true
+
     local simc = self:GetSimcStorage()
     local maxLevel = self:GetEffectiveMaxLevel()
 
     for characterKey, character in pairs(simc.characters) do
+        NormalizeSimcCharacter(character)
+
         if type(character) ~= "table" or not character.name or (character.level or 0) < maxLevel then
             simc.characters[characterKey] = nil
             simc.exports[characterKey] = nil
@@ -274,7 +340,7 @@ function APRaidUtils:CleanupSimcData()
     end
 end
 
-function APRaidUtils:RegisterCurrentCharacter()
+function AP:RegisterCurrentCharacter()
     local characterInfo = self:GetPlayerCharacterInfo()
     if not characterInfo or not characterInfo.key then
         return nil
@@ -288,10 +354,11 @@ function APRaidUtils:RegisterCurrentCharacter()
     end
 
     local existing = simc.characters[characterInfo.key] or {}
+    local classFile = NormalizeClassFile(characterInfo.classFile) or NormalizeClassFile(existing.classFile) or characterInfo.classFile or existing.classFile
     simc.characters[characterInfo.key] = {
         name = characterInfo.name,
         realm = characterInfo.realm,
-        classFile = characterInfo.classFile,
+        classFile = classFile,
         specName = characterInfo.specName,
         level = characterInfo.level,
         enabled = existing.enabled == true,
@@ -301,16 +368,15 @@ function APRaidUtils:RegisterCurrentCharacter()
     return characterInfo
 end
 
-function APRaidUtils:GetSimcCharacter(characterKey)
-    self:CleanupSimcData()
-    return self:GetSimcStorage().characters[characterKey]
+function AP:GetSimcCharacter(characterKey)
+    return NormalizeSimcCharacter(self:GetSimcStorage().characters[characterKey])
 end
 
-function APRaidUtils:GetSimcCharacters()
-    self:CleanupSimcData()
-
+function AP:GetSimcCharacters()
     local characters = {}
     for characterKey, character in pairs(self:GetSimcStorage().characters) do
+        NormalizeSimcCharacter(character)
+
         characters[#characters + 1] = {
             key = characterKey,
             name = character.name,
@@ -330,14 +396,11 @@ function APRaidUtils:GetSimcCharacters()
     return characters
 end
 
-function APRaidUtils:GetSimcExport(characterKey)
-    self:CleanupSimcData()
+function AP:GetSimcExport(characterKey)
     return self:GetSimcStorage().exports[characterKey]
 end
 
-function APRaidUtils:GetSimcExportCharacters()
-    self:CleanupSimcData()
-
+function AP:GetSimcExportCharacters()
     local characters = {}
     local simc = self:GetSimcStorage()
     for _, character in ipairs(self:GetSimcCharacters()) do
@@ -350,12 +413,12 @@ function APRaidUtils:GetSimcExportCharacters()
     return characters
 end
 
-function APRaidUtils:IsSimcCharacterEnabled(characterKey)
+function AP:IsSimcCharacterEnabled(characterKey)
     local character = self:GetSimcCharacter(characterKey)
     return character and character.enabled == true or false
 end
 
-function APRaidUtils:SetSimcCharacterEnabled(characterKey, enabled)
+function AP:SetSimcCharacterEnabled(characterKey, enabled)
     local character = self:GetSimcCharacter(characterKey)
     if not character then
         return
@@ -365,7 +428,7 @@ function APRaidUtils:SetSimcCharacterEnabled(characterKey, enabled)
     self:NotifyOptionsChanged()
 end
 
-function APRaidUtils:SaveSimcExport(characterInfo, exportText)
+function AP:SaveSimcExport(characterInfo, exportText)
     if not characterInfo or not characterInfo.key or not exportText or exportText == "" then
         return false
     end
@@ -381,6 +444,10 @@ function APRaidUtils:SaveSimcExport(characterInfo, exportText)
     end
 
     local updatedAt = time()
+    local normalizedClassFile = NormalizeClassFile(characterInfo.classFile) or NormalizeClassFile(character.classFile) or characterInfo.classFile or character.classFile
+    character.name = characterInfo.name
+    character.realm = characterInfo.realm
+    character.classFile = normalizedClassFile
     character.specName = characterInfo.specName
     character.level = characterInfo.level
     character.lastSeen = updatedAt
@@ -396,7 +463,7 @@ function APRaidUtils:SaveSimcExport(characterInfo, exportText)
     return true
 end
 
-function APRaidUtils:NotifyOptionsChanged()
+function AP:NotifyOptionsChanged()
     if self.RefreshSimcTab then
         self:RefreshSimcTab()
     end
@@ -410,7 +477,7 @@ function APRaidUtils:NotifyOptionsChanged()
     end
 end
 
-function APRaidUtils:HandleChatCommand()
+function AP:HandleChatCommand()
     if self.ToggleMainWindow then
         self:ToggleMainWindow()
         return
@@ -419,17 +486,37 @@ function APRaidUtils:HandleChatCommand()
     self:Print("APRaidUtils UI is unavailable.")
 end
 
-function IsVersionNewer(their, mine)
+function AP:IsVersionNewer(their, mine)
     local maj1, min1, pat1 = tostring(their):match("^v?(%d+)%.?(%d*)%.?(%d*)$")
     maj1, min1, pat1 = tonumber(maj1) or 0, tonumber(min1) or 0, tonumber(pat1) or 0
 
-    -- Parse "mine"
     local maj2, min2, pat2 = tostring(mine):match("^v?(%d+)%.?(%d*)%.?(%d*)$")
     maj2, min2, pat2 = tonumber(maj2) or 0, tonumber(min2) or 0, tonumber(pat2) or 0
 
-    -- Compare
     if maj1 > maj2 then return true end
     if maj1 == maj2 and min1 > min2 then return true end
     if maj1 == maj2 and min1 == min2 and pat1 > pat2 then return true end
     return false
 end
+
+function AP:ShowReloadDialog(options)
+    if not options or not options.text then return end
+
+    local popup = StaticPopup_Show("AP_RELOAD_DIALOG")
+    if popup then
+        popup.text:SetText(options.text)
+    end
+end
+
+SlashCmdList["APRAIDUTILS"] = function(msg) AP:HandleChatCommand(msg) end
+SLASH_APRAIDUTILS1 = "/ap"
+
+StaticPopupDialogs["AP_RELOAD_DIALOG"] = {
+    text = "%s",
+    button1 = "Reload UI",
+    button2 = "Later",
+    OnAccept = function() ReloadUI() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}

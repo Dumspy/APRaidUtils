@@ -1,5 +1,5 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local SimcExport = AP:GetModule("SimcExport")
+local AP = _G["APRaidUtils"]
+local SimcExport = AP.SimcExport
 
 function SimcExport:RefreshUI()
     if AP.RefreshSimcTab then

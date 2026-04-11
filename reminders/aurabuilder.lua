@@ -1,5 +1,7 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
-local AuraBuilder = AP:NewModule("AuraBuilder", "AceEvent-3.0")
+local AP = _G["APRaidUtils"]
+
+local AuraBuilder = {}
+AP.AuraBuilder = AuraBuilder
 
 local TEMPLATE_ID = "APRaidUtils_Template"
 local ROOT_GROUP_ID = "APReminders"
@@ -208,7 +210,6 @@ function AuraBuilder:CreateDefaultTemplate()
     if AP.ShowReloadDialog then
         AP:ShowReloadDialog({
             text = "The APRaidUtils Reminder Template has been created in M33kAuras. Please reload your UI to see it in the M33kAuras list.",
-            action = "template_creation",
         })
     end
 
@@ -292,7 +293,7 @@ function AuraBuilder:GetOrCreateRaidGroup(encounterId, encounterName)
         resolvedName = self:ResolveEncounterName(encounterId)
     end
     if not resolvedName or resolvedName == "" then
-        local reminders = AP:GetModule("Reminders", true)
+        local reminders = AP.Reminders
         if reminders and type(reminders.GetRaidDisplayName) == "function" then
             local raidId = definition.raidId or definition.instanceId or encounterId
             resolvedName = reminders:GetRaidDisplayName(raidId)
@@ -383,7 +384,7 @@ function AuraBuilder:GetOrCreateBossGroup(encounterId, bossName, moduleName, def
         resolvedName = self:ResolveEncounterName(encounterId)
     end
     if not resolvedName or resolvedName == "" then
-        local reminders = AP:GetModule("Reminders", true)
+        local reminders = AP.Reminders
         if reminders and type(reminders.GetRaidDisplayName) == "function" then
             local raidId = definition and (definition.raidId or definition.instanceId) or encounterId
             resolvedName = reminders:GetRaidDisplayName(raidId)

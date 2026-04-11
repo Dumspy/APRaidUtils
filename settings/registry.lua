@@ -1,4 +1,4 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local AP = _G["APRaidUtils"]
 
 local function GetCurrentCharacterText()
     local currentCharacter = AP:GetPlayerCharacterInfo()
@@ -10,15 +10,15 @@ local function GetCurrentCharacterText()
 end
 
 local function GetRemindersModule()
-    return AP:GetModule("Reminders", true)
+    return AP.Reminders
 end
 
 local function GetAuraBuilderModule()
-    return AP:GetModule("AuraBuilder", true)
+    return AP.AuraBuilder
 end
 
 local function GetLeadPassModule()
-    return AP:GetModule("LeadPassReminder", true)
+    return AP.LeadPassReminder
 end
 
 local function GetM33kAurasStatusText()
@@ -49,7 +49,7 @@ local function BuildCharacterItems()
             name = function()
                 return AP:GetCharacterDisplayName(character)
             end,
-            desc = "Refresh this character's latest SimulationCraft export on login or reload.",
+            desc = "Refresh this character's latest SimulationCraft export on login, reload, equipped gear changes, and applied talent changes.",
             get = function()
                 return AP:IsSimcCharacterEnabled(characterKey)
             end,
@@ -157,7 +157,7 @@ local function GetSections()
                 {
                     id = "intro",
                     type = "description",
-                    text = "Enable max-level characters here to refresh their latest SimulationCraft export on login or reload. Requires the Simulationcraft addon to be installed and enabled.",
+                    text = "Enable max-level characters here to refresh their latest SimulationCraft export on login, reload, equipped gear changes, and applied talent changes. Requires the Simulationcraft addon to be installed and enabled.",
                     order = 1,
                     surfaces = {
                         ace = true,

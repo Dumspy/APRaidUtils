@@ -1,6 +1,7 @@
-local AP = LibStub("AceAddon-3.0"):GetAddon("APRaidUtils")
+local AP = _G["APRaidUtils"]
 
-local APAnchor = AP:NewModule("APAnchor")
+local APAnchor = {}
+AP.APAnchor = APAnchor
 
 local DF = LibStub("DetailsFramework-1.0")
 local SharedMedia = LibStub("LibSharedMedia-3.0")
@@ -9,6 +10,10 @@ local anchors = {}
 local anchorFrames = {}
 local rightClickMenus = {}
 local allAnchorsVisible = false
+
+local function MigrateFont(font)
+    return font
+end
 
 local defaultAnchorDefaults = {
     point = "CENTER",
@@ -20,7 +25,7 @@ local defaultAnchorDefaults = {
     fontSize = 14,
     maxWidth = 300,
     maxHeight = 60,
-    font = "GameFontNormal",
+    font = "Friz Quadrata TT",
     colorR = 1.0,
     colorG = 0.82,
     colorB = 0,
@@ -28,17 +33,19 @@ local defaultAnchorDefaults = {
     locked = false,
 }
 
+local DEFAULT_LABEL_FONT_OBJECT = "GameFontNormal"
+
 local function GetAnchorDB(key)
-    if not AP.db or not AP.db.profile then
+    if not APRaidUtilsDB or not APRaidUtilsDB.profile then
         return nil
     end
-    if not AP.db.profile.anchors then
-        AP.db.profile.anchors = {}
+    if not APRaidUtilsDB.profile.anchors then
+        APRaidUtilsDB.profile.anchors = {}
     end
-    if not AP.db.profile.anchors[key] then
-        AP.db.profile.anchors[key] = {}
+    if not APRaidUtilsDB.profile.anchors[key] then
+        APRaidUtilsDB.profile.anchors[key] = {}
     end
-    return AP.db.profile.anchors[key]
+    return APRaidUtilsDB.profile.anchors[key]
 end
 
 local function GetMergedSettings(key, userDefaults)
@@ -56,6 +63,9 @@ local function GetMergedSettings(key, userDefaults)
         for k, v in pairs(db) do
             settings[k] = v
         end
+    end
+    if settings.font then
+        settings.font = MigrateFont(settings.font)
     end
     return settings
 end
@@ -344,8 +354,54 @@ local function BuildSettingsPanel(frame, key)
         ApplySettingsToFrame(frame, currentSettings)
     end, GetFontDropdownValue(settings.font), 240, 20, nil, "$parentFontDropdown", DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"), true)
     fontDropdown:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+    frame.fontDropdown = fontDropdown
     yOffset = yOffset - 30
 
+    local colorLabel = DF:CreateLabel(panel, "Color", 10, "orange")
+    colorLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+    yOffset = yOffset - 18
+
+    local colorButton = DF:CreateButton(panel, function()
+        local r, g, b = settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0
+        local opacity = settings.opacity or 1.0
+
+        local info = {
+            swatchFunc = function()
+                local cr, cg, cb = ColorPickerFrame:GetColorRGB()
+                SaveAnchorSetting(key, "colorR", cr)
+                SaveAnchorSetting(key, "colorG", cg)
+                SaveAnchorSetting(key, "colorB", cb)
+                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                ApplySettingsToFrame(frame, currentSettings)
+            end,
+            hasOpacity = true,
+            opacityFunc = function()
+                local o = ColorPickerFrame:GetColorAlpha()
+                SaveAnchorSetting(key, "opacity", o)
+                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                ApplySettingsToFrame(frame, currentSettings)
+            end,
+            opacity = opacity,
+            cancelFunc = function()
+                SaveAnchorSetting(key, "colorR", r)
+                SaveAnchorSetting(key, "colorG", g)
+                SaveAnchorSetting(key, "colorB", b)
+                SaveAnchorSetting(key, "opacity", opacity)
+                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                ApplySettingsToFrame(frame, currentSettings)
+            end,
+            r = r,
+            g = g,
+            b = b,
+            extraInfo = key,
+        }
+
+        ColorPickerFrame:Hide()
+        ColorPickerFrame:SetupColorPickerAndShow(info)
+    end, 240, 22, "Pick Color")
+    colorButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+    colorButton:SetTemplate(DF:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+    yOffset = yOffset - 32
     local opacityLabel = DF:CreateLabel(panel, "Opacity", 10, "orange")
     opacityLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
@@ -422,11 +478,11 @@ local function CreateAnchorFrame(key, userDefaults)
     frame:SetBackdropColor(0, 0, 0, 0)
     frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
 
-    local text = DF:CreateLabel(frame, settings.text or "", math.min(settings.fontSize or 14, 72), {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, defaultAnchorDefaults.font, "Text", "$parentText", "OVERLAY")
+    local text = DF:CreateLabel(frame, settings.text or "", math.min(settings.fontSize or 14, 72), {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, DEFAULT_LABEL_FONT_OBJECT, "Text", "$parentText", "OVERLAY")
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")
-    text:SetWidth(290)
+    text:SetWidth((settings.maxWidth or 300) - 10)
     text:SetWordWrap(true)
     frame.Text = text
 
@@ -459,8 +515,10 @@ local function CreateAnchorFrame(key, userDefaults)
 
     frame:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
-        local point, _, relativePoint, x, y = frame:GetPoint()
+        local point, relativeTo, relativePoint, x, y = frame:GetPoint()
+        local relativeToName = relativeTo and relativeTo:GetName()
         SaveAnchorSetting(key, "point", point or "CENTER")
+        SaveAnchorSetting(key, "relativeTo", relativeToName or "UIParent")
         SaveAnchorSetting(key, "relativePoint", relativePoint or "CENTER")
         SaveAnchorSetting(key, "x", x or 0)
         SaveAnchorSetting(key, "y", y or 0)
