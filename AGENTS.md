@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-04-11
-**Commit:** `26afc88`
+**Commit:** `77e0a88`
 **Branch:** `nix-lua-tooling`
 
 ## OVERVIEW
