@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.1",
+  "runtime.builtin": {
+    "debug": "disable",
+    "ffi": "disable",
+    "io": "disable",
+    "jit": "disable",
+    "os": "disable",
+    "package": "disable",
+    "utf8": "disable"
+  },
+  "workspace.checkThirdParty": false,
+  "workspace.ignoreDir": [
+    ".git",
+    "libs"
+  ],
+  "workspace.library": [
+    "meta"
+  ],
+  "diagnostics.globals": [
+    "APRaidUtilsDB",
+    "SLASH_APRAIDUTILS1"
+  ],
+  "diagnostics.libraryFiles": "Disable",
+  "hint.enable": true,
+  "hint.paramName": "Literal"
+}

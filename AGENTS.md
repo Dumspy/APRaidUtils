@@ -1,70 +1,87 @@
-# APRaidUtils Development Guide
+# PROJECT KNOWLEDGE BASE
 
-## Architecture
+**Generated:** 2026-04-11
+**Commit:** `2c2d398`
+**Branch:** `main`
 
-- **Pattern**: Namespace-based, no AceAddon dependency
-- **Events**: Frame-based event system
-- **Storage**: Direct saved variables
-- **UI**: LibDFramework-1.0 (bundled)
+## OVERVIEW
 
-## Key Patterns
+APRaidUtils is a World of Warcraft raid utility addon built around a global namespace table, one shared event frame, direct saved variables, and a single DetailsFramework-backed window. First-party code lives outside `libs/`; reminders bridge BigWigs metadata into M33kAuras, while SimC and version features integrate with external addons through exported APIs or AceComm.
 
-### Event Handling
-- All events registered on central `AP.eventFrame`
-- Single `AP:HandleEvent(event, ...)` dispatcher
+## STRUCTURE
 
-### Module Pattern
-- Direct table assignment: `AP.ModuleName = {}`
-- No `AP:NewModule()` calls
+```text
+APRaidUtils/
+|- APRaidUtils.toc          # load order, SavedVariables, release version token
+|- main.lua                 # namespace bootstrap, DB init, SimC storage, slash command
+|- eventHandler.lua         # central WoW event registration and dispatch
+|- comms.lua                # AceComm transport, sender validation, throttling
+|- rosterManager.lua        # roster parsing, invite, move helpers
+|- leadpass.lua             # Mythic lead-pass reminder and anchor usage
+|- settings/                # settings registry DSL and DF renderer
+|- simcExport/              # SimulationCraft capture and UI shim
+|- reminders/               # BigWigs discovery and M33kAuras sync
+|- versionChecker/          # group version request/reply flow
+|- ui/                      # main window and anchor editor subsystem
+|- .github/workflows/       # tag-driven release automation
+`- libs/                    # vendored third-party code; runtime path is libs/libs.xml only
+```
 
-### Communication
-- Use AceComm-3.0 for cross-addon messaging
-- Always validate sender is in group
-- Rate limit broadcasts (5 msg/2sec max)
+## WHERE TO LOOK
 
-### Saved Variables
-- Access via `APRaidUtilsDB.global`, `APRaidUtilsDB.profile`
-- Initialize defaults in ADDON_LOADED handler
+| Task | Location | Notes |
+|------|----------|-------|
+| Startup and load order | `APRaidUtils.toc`, `main.lua`, `eventHandler.lua` | Namespace bootstrap first, then central event dispatch |
+| Add or change comm traffic | `comms.lua` plus consumer module | Serialized `{ event, data }`, group validation, 5 messages / 2 seconds |
+| Change shared window behavior | `ui/AGENTS.md` | Tab ownership and open/refresh flows are centralized there |
+| Change reminder discovery or imports | `reminders/AGENTS.md` | BigWigs metadata in, M33kAuras objects out |
+| Change settings surface | `settings/AGENTS.md` | Registry DSL feeds one DetailsFramework renderer |
+| Change SimC capture | `simcExport/AGENTS.md` | Command-hook path first, direct exporter fallback |
+| Change group version checks | `versionChecker/AGENTS.md` | Query/reply/UI split |
+| Touch release flow | `.github/workflows/` | `bump-release.yml` creates tags, `build-release.yml` packages them |
+| Verify loaded vendor code | `libs/libs.xml` | Not every folder under `libs/` is on the runtime path |
 
-## Code Style
+## CONVENTIONS
 
-- 4-space indentation, no tabs
-- Local variables before functions
-- Use `local AP = _G["APRaidUtils"]` in all files
-- No comments unless API docs needed
+- All first-party files use `local AP = _G["APRaidUtils"]`.
+- Root addon pattern is namespace-based; no AceAddon root object, no `AP:NewModule()`.
+- WoW events register on `AP.eventFrame`; `eventHandler.lua` is the shared dispatcher.
+- Saved state is direct `APRaidUtilsDB.global` and `APRaidUtilsDB.profile`; defaults initialize in `AP:OnAddonLoaded()`.
+- Cross-player traffic goes through `AP.Comms`; sender must be in raid or party before callbacks run.
+- Feature `ui.lua` files are thin facades into `ui/main.lua`; heavy widget ownership stays under `ui/`.
+- Runtime-loaded third-party code is whatever `libs/libs.xml` includes, not every directory under `libs/`.
 
-## Testing
+## ANTI-PATTERNS (THIS PROJECT)
 
-- `/reload` after changes
-- Test in raid environment for comms
-- Verify saved variable migration
+- Do not reintroduce AceAddon, AceDB, or AceEvent patterns into first-party code.
+- Do not register new top-level event frames when `AP.eventFrame` can own the event.
+- Do not bypass `AP.Comms` sender validation or throttling with raw addon-message handlers.
+- Do not treat `libs/` as project-authored code or document vendor tests/examples as addon behavior.
+- Do not create parallel top-level windows for features already hosted in `ui/main.lua`.
+- Do not assume every directory under `libs/` loads at runtime; check `libs/libs.xml` first.
+- Do not store reminder persistence in `APRaidUtilsDB`; that feature owns records in `M33kAurasSaved.displays`.
 
-## Resources
+## UNIQUE STYLES
 
-### Libraries (Bundled)
-- **LibDFramework-1.0**: `libs/LibDFramework-1.0/` - UI framework
-- **AceComm-3.0**: `libs/AceComm-3.0/` - Addon communication
-- **AceSerializer-3.0**: `libs/AceSerializer-3.0/` - Data serialization
-- **LibSharedMedia-3.0**: `libs/LibSharedMedia-3.0/` - Font/media access
-- **LibStub**: `libs/LibStub/` - Library loader
-- **CallbackHandler-1.0**: `libs/CallbackHandler-1.0/` - Callback system
+- Settings are metadata-driven: registry entries with closures, then one DF renderer flattens them into menu items.
+- Reminder rules live in `M33kAurasSaved.displays` with `ap_*` tags, not in `APRaidUtilsDB`.
+- SimC automatic capture is event-driven but delayed/coalesced, and manual/automatic capture prefer the Simulationcraft command path first.
+- Version checker collects more fields than the UI renders; `MRTNoteHash` and `IgnoredRaiders` stay off-table today.
+- Anchor editing is its own subsystem with persisted detached settings-panel position under `APRaidUtilsDB.profile.anchors`.
 
-### Reference Addons
-- **NorthernSkyRaidTools**: https://github.com/Reloe/NorthernSkyRaidTools - Modern raid tools architecture
-- **Details! Damage Meter**: https://github.com/Detailsfw/Performance - Combat logging
-- **BigWigs**: https://github.com/BigWigsMods/BigWigs - Boss mod architecture
+## COMMANDS
 
-### WoW API
-- **WoW Wiki API**: https://wowpedia.fandom.com/wiki/API
-- **FrameXML Reference**: https://wowpedia.fandom.com/wiki/Patch_12.0.0/API_changes
+```text
+/reload
+/ap
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
 
-### Libraries (External)
-- **Ace3**: https://www.wowace.com/projects/ace3 - Reference for library patterns
-- **LibStub**: https://github.com/kwikky/LibStub - Library loader spec
-- **ChatThrottleLib**: https://github.com/Elv22/ChatThrottleLib - Message rate limiting
+## NOTES
 
-## License Notes
-
-- LibSharedMedia-3.0: LGPL v2.1
-- Ace libraries: BSD-style (free to use)
-- LibDFramework: Bundled with Details!, check license for derivative use
+- No local build or test runner is defined in this repo; verification is manual in-game.
+- No LSP codemap was available during generation, so this file stays source-inspection driven.
+- `.github/workflows/bump-release.yml` computes semver tags; `.github/workflows/build-release.yml` packages tagged refs with `BigWigsMods/packager`.
+- `libs/` contains retained-but-unloaded Ace directories plus vendor tests/examples; tree size overstates first-party complexity.
+- Child knowledge files exist in `ui/`, `reminders/`, `settings/`, `simcExport/`, and `versionChecker/`.
