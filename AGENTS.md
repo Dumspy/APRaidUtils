@@ -1,8 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-04-11
-**Commit:** `2c2d398`
-**Branch:** `main`
+**Commit:** `26afc88`
+**Branch:** `nix-lua-tooling`
 
 ## OVERVIEW
 
@@ -76,7 +76,25 @@ APRaidUtils/
 /ap
 git tag vX.Y.Z
 git push origin vX.Y.Z
+nix develop          # Enter dev shell
+direnv allow         # Auto-load shell on entry
 ```
+
+## TOOLING
+
+This repo uses repo-owned Lua tooling for consistent editor/AI support.
+
+| File | Purpose |
+|------|---------|
+| `flake.nix` | Nix dev shell definition |
+| `.luarc.json` | LuaLS configuration (editor-agnostic) |
+| `.stylua.toml` | Code formatting |
+| `.luacheckrc` | Linting with WoW globals |
+| `meta/` | Project and WoW API annotations |
+
+**Tools in shell:** `lua-language-server`, `lua5.1`, `luacheck`, `stylua`
+
+**Exclude from lint:** `libs/**` (vendored code)
 
 ## NOTES
 
