@@ -21,10 +21,28 @@ local function GetLeadPassModule()
     return AP.LeadPassReminder
 end
 
+local function GetBreakTimerModule()
+    return AP.BreakTimer
+end
+
+local function ToggleAllAnchors()
+    if AP.LeadPassReminder and AP.LeadPassReminder.OnAddonLoaded then
+        AP.LeadPassReminder:OnAddonLoaded()
+    end
+
+    if AP.BreakTimer and AP.BreakTimer.OnAddonLoaded then
+        AP.BreakTimer:OnAddonLoaded()
+    end
+
+    if AP.APAnchor then
+        AP.APAnchor:ToggleAllAnchors()
+    end
+end
+
 local function GetM33kAurasStatusText()
     local Reminders = GetRemindersModule()
     if Reminders and Reminders.GetM33kAurasStatus then
-        local status, msg = Reminders:GetM33kAurasStatus()
+        local status = Reminders:GetM33kAurasStatus()
         if status == "missing" then
             return "|cffff4444M33kAuras is not installed. Reminders require M33kAuras.|r"
         elseif status == "missing_template" then
@@ -104,17 +122,91 @@ local function GetSections()
                     order = 1,
                 },
                 {
-                    id = "leadpassToggleAnchors",
-                    type = "execute",
-                    name = "Toggle Anchor Position",
-                    desc = "Show or hide movable anchors to adjust position and appearance. Right-click an anchor for settings.",
-                    func = function()
-                        local module = GetLeadPassModule()
+                    id = "leadpassInfo",
+                    type = "description",
+                    text = "Use the shared Anchors button below to move and style all APRaidUtils anchors.",
+                    order = 2,
+                },
+            },
+        },
+        {
+            id = "breaktimer",
+            type = "group",
+            name = "Break Timer",
+            order = 2,
+            items = {
+                {
+                    id = "breaktimerEnabled",
+                    type = "toggle",
+                    name = "Enable Break Timer Anchor",
+                    desc = "Show a break timer anchor for BigWigs and DBM breaks, even when only group addon messages are available.",
+                    get = function()
+                        local module = GetBreakTimerModule()
+                        return module and module:IsEnabled() or false
+                    end,
+                    set = function(value)
+                        local module = GetBreakTimerModule()
                         if module then
-                            module:ToggleAnchors()
+                            module:SetEnabled(value)
+                        end
+                    end,
+                    order = 1,
+                },
+                {
+                    id = "breaktimerShowCountdown",
+                    type = "toggle",
+                    name = "Show Countdown",
+                    desc = "Show the remaining break duration as a countdown.",
+                    get = function()
+                        local module = GetBreakTimerModule()
+                        return module and module:GetShowCountdown() or false
+                    end,
+                    set = function(value)
+                        local module = GetBreakTimerModule()
+                        if module then
+                            module:SetShowCountdown(value)
                         end
                     end,
                     order = 2,
+                },
+                {
+                    id = "breaktimerShowEndTime",
+                    type = "toggle",
+                    name = "Show End Time",
+                    desc = "Show the exact time when the break ends in HH:MM:SS format.",
+                    get = function()
+                        local module = GetBreakTimerModule()
+                        return module and module:GetShowEndTime() or false
+                    end,
+                    set = function(value)
+                        local module = GetBreakTimerModule()
+                        if module then
+                            module:SetShowEndTime(value)
+                        end
+                    end,
+                    order = 3,
+                },
+                {
+                    id = "breaktimerInfo",
+                    type = "description",
+                    text = "Use the shared Anchors button below to move and style all APRaidUtils anchors.",
+                    order = 4,
+                },
+            },
+        },
+        {
+            id = "anchors",
+            type = "group",
+            name = "Anchors",
+            order = 3,
+            items = {
+                {
+                    id = "toggleAllAnchors",
+                    type = "execute",
+                    name = "Toggle Anchor Position",
+                    desc = "Show or hide movable anchors for all APRaidUtils features. Right-click an anchor for settings.",
+                    func = ToggleAllAnchors,
+                    order = 1,
                     df = {
                         width = 200,
                     },
@@ -125,7 +217,7 @@ local function GetSections()
             id = "reminders",
             type = "group",
             name = "Reminders",
-            order = 2,
+            order = 4,
             items = {
                 {
                     id = "remindersIntro",

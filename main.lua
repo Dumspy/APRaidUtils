@@ -2,6 +2,8 @@ local AP = {}
 _G["APRaidUtils"] = AP
 _G["AP"] = AP
 
+local time = _G.time
+
 local eventFrame = CreateFrame("Frame")
 AP.eventFrame = eventFrame
 eventFrame:SetAllPoints(UIParent)
@@ -56,7 +58,9 @@ end
 local function WrapTextInClassColor(classFile, text)
     if type(classFile) == "number" then
         local classInfo = C_CreatureInfo and C_CreatureInfo.GetClassInfo and C_CreatureInfo.GetClassInfo(classFile)
-        classFile = classInfo and classInfo.classFile or (GetClassInfo and select(2, GetClassInfo(classFile))) or classFile
+        classFile = classInfo and classInfo.classFile
+            or (GetClassInfo and select(2, GetClassInfo(classFile)))
+            or classFile
     end
 
     local colorTable = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
@@ -70,7 +74,13 @@ local function WrapTextInClassColor(classFile, text)
     end
 
     if classColor.r and classColor.g and classColor.b then
-        return string.format("|cff%02x%02x%02x%s|r", math.floor(classColor.r * 255), math.floor(classColor.g * 255), math.floor(classColor.b * 255), text)
+        return string.format(
+            "|cff%02x%02x%02x%s|r",
+            math.floor(classColor.r * 255),
+            math.floor(classColor.g * 255),
+            math.floor(classColor.b * 255),
+            text
+        )
     end
 
     return text
@@ -121,6 +131,8 @@ local function InitializeSavedVariables()
     APRaidUtilsDB = APRaidUtilsDB or {}
     APRaidUtilsDB.profile = APRaidUtilsDB.profile or {}
     APRaidUtilsDB.global = APRaidUtilsDB.global or {}
+    APRaidUtilsDB.profile.breaktimer = APRaidUtilsDB.profile.breaktimer or {}
+    APRaidUtilsDB.global.breaktimer = APRaidUtilsDB.global.breaktimer or {}
     APRaidUtilsDB.global.simc = APRaidUtilsDB.global.simc or {
         characters = {},
         exports = {},
@@ -134,6 +146,14 @@ end
 function AP:OnAddonLoaded()
     InitializeSavedVariables()
     self:CleanupSimcData()
+
+    if self.LeadPassReminder and self.LeadPassReminder.OnAddonLoaded then
+        self.LeadPassReminder:OnAddonLoaded()
+    end
+
+    if self.BreakTimer and self.BreakTimer.OnAddonLoaded then
+        self.BreakTimer:OnAddonLoaded()
+    end
 
     if not IsDevVersion and AP.Comms then
         AP.Comms:RegisterCallback("CHECK_UPDATE", function(event, sender, distribution, data)
@@ -153,10 +173,14 @@ function AP:OnPlayerLogin()
     self:RegisterCurrentCharacter()
     self:NotifyOptionsChanged()
 
+    if self.BreakTimer and self.BreakTimer.OnPlayerLogin then
+        self.BreakTimer:OnPlayerLogin()
+    end
+
     if IsInGuild() and not IsDevVersion then
         local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
         if AP.Comms then
-            AP.Comms:Broadcast("CHECK_UPDATE", "GUILD", {versions = {APRaidUtils = myVersion}})
+            AP.Comms:Broadcast("CHECK_UPDATE", "GUILD", { versions = { APRaidUtils = myVersion } })
         end
     end
 end
@@ -230,7 +254,9 @@ function AP:GetCharacterClassText(character)
         return ""
     end
 
-    return LOCALIZED_CLASS_NAMES_MALE[normalizedCharacter.classFile] or LOCALIZED_CLASS_NAMES_FEMALE[normalizedCharacter.classFile] or normalizedCharacter.classFile
+    return LOCALIZED_CLASS_NAMES_MALE[normalizedCharacter.classFile]
+        or LOCALIZED_CLASS_NAMES_FEMALE[normalizedCharacter.classFile]
+        or normalizedCharacter.classFile
 end
 
 function AP:GetCharacterSpecializationText(character, specName)
@@ -318,7 +344,9 @@ function AP:IsSimcExportValid(exportText)
 end
 
 function AP:CleanupSimcData()
-    if self._simcCleanupDone then return end
+    if self._simcCleanupDone then
+        return
+    end
     self._simcCleanupDone = true
 
     local simc = self:GetSimcStorage()
@@ -334,7 +362,12 @@ function AP:CleanupSimcData()
     end
 
     for characterKey, exportData in pairs(simc.exports) do
-        if not simc.characters[characterKey] or type(exportData) ~= "table" or not exportData.text or exportData.text == "" then
+        if
+            not simc.characters[characterKey]
+            or type(exportData) ~= "table"
+            or not exportData.text
+            or exportData.text == ""
+        then
             simc.exports[characterKey] = nil
         end
     end
@@ -354,7 +387,10 @@ function AP:RegisterCurrentCharacter()
     end
 
     local existing = simc.characters[characterInfo.key] or {}
-    local classFile = NormalizeClassFile(characterInfo.classFile) or NormalizeClassFile(existing.classFile) or characterInfo.classFile or existing.classFile
+    local classFile = NormalizeClassFile(characterInfo.classFile)
+        or NormalizeClassFile(existing.classFile)
+        or characterInfo.classFile
+        or existing.classFile
     simc.characters[characterInfo.key] = {
         name = characterInfo.name,
         realm = characterInfo.realm,
@@ -444,7 +480,10 @@ function AP:SaveSimcExport(characterInfo, exportText)
     end
 
     local updatedAt = time()
-    local normalizedClassFile = NormalizeClassFile(characterInfo.classFile) or NormalizeClassFile(character.classFile) or characterInfo.classFile or character.classFile
+    local normalizedClassFile = NormalizeClassFile(characterInfo.classFile)
+        or NormalizeClassFile(character.classFile)
+        or characterInfo.classFile
+        or character.classFile
     character.name = characterInfo.name
     character.realm = characterInfo.realm
     character.classFile = normalizedClassFile
@@ -493,14 +532,22 @@ function AP:IsVersionNewer(their, mine)
     local maj2, min2, pat2 = tostring(mine):match("^v?(%d+)%.?(%d*)%.?(%d*)$")
     maj2, min2, pat2 = tonumber(maj2) or 0, tonumber(min2) or 0, tonumber(pat2) or 0
 
-    if maj1 > maj2 then return true end
-    if maj1 == maj2 and min1 > min2 then return true end
-    if maj1 == maj2 and min1 == min2 and pat1 > pat2 then return true end
+    if maj1 > maj2 then
+        return true
+    end
+    if maj1 == maj2 and min1 > min2 then
+        return true
+    end
+    if maj1 == maj2 and min1 == min2 and pat1 > pat2 then
+        return true
+    end
     return false
 end
 
 function AP:ShowReloadDialog(options)
-    if not options or not options.text then return end
+    if not options or not options.text then
+        return
+    end
 
     local popup = StaticPopup_Show("AP_RELOAD_DIALOG")
     if popup then
@@ -508,14 +555,18 @@ function AP:ShowReloadDialog(options)
     end
 end
 
-SlashCmdList["APRAIDUTILS"] = function(msg) AP:HandleChatCommand(msg) end
+SlashCmdList["APRAIDUTILS"] = function(msg)
+    AP:HandleChatCommand(msg)
+end
 SLASH_APRAIDUTILS1 = "/ap"
 
 StaticPopupDialogs["AP_RELOAD_DIALOG"] = {
     text = "%s",
     button1 = "Reload UI",
     button2 = "Later",
-    OnAccept = function() ReloadUI() end,
+    OnAccept = function()
+        ReloadUI()
+    end,
     timeout = 0,
     whileDead = true,
     hideOnEscape = true,
