@@ -21,6 +21,10 @@ local function GetLeadPassModule()
     return AP.LeadPassReminder
 end
 
+local function GetHousingRollModule()
+    return AP.HousingRoll
+end
+
 local function GetBreakTimerModule()
     return AP.BreakTimer
 end
@@ -198,7 +202,7 @@ local function GetSections()
             id = "anchors",
             type = "group",
             name = "Anchors",
-            order = 3,
+            order = 5,
             items = {
                 {
                     id = "toggleAllAnchors",
@@ -209,6 +213,38 @@ local function GetSections()
                     order = 1,
                     df = {
                         width = 200,
+                    },
+                },
+            },
+        },
+        {
+            id = "housingRoll",
+            type = "group",
+            name = "Housing Auto Roll",
+            order = 2,
+            items = {
+                {
+                    id = "housingRollMode",
+                    type = "select",
+                    name = "Housing Roll Behavior",
+                    desc = "Automatically roll on housing-class loot when the group loot frame appears.",
+                    get = function()
+                        local module = GetHousingRollModule()
+                        return module and module:GetMode() or "disabled"
+                    end,
+                    set = function(value)
+                        local module = GetHousingRollModule()
+                        if module then
+                            module:SetMode(value)
+                        end
+                    end,
+                    values = function()
+                        local module = GetHousingRollModule()
+                        return module and module:GetModeOptions() or {}
+                    end,
+                    order = 1,
+                    df = {
+                        width = 180,
                     },
                 },
             },

@@ -8,6 +8,8 @@ eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 eventFrame:RegisterEvent("ACTIVE_PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+eventFrame:RegisterEvent("START_LOOT_ROLL")
+eventFrame:RegisterEvent("CONFIRM_LOOT_ROLL")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -46,6 +48,14 @@ function AP:HandleEvent(event, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         if self.LeadPassReminder then
             self.LeadPassReminder:CheckConditions()
+        end
+    elseif event == "START_LOOT_ROLL" then
+        if self.HousingRoll and self.HousingRoll.OnStartLootRoll then
+            self.HousingRoll:OnStartLootRoll(...)
+        end
+    elseif event == "CONFIRM_LOOT_ROLL" then
+        if self.HousingRoll and self.HousingRoll.OnConfirmLootRoll then
+            self.HousingRoll:OnConfirmLootRoll(...)
         end
     elseif event == "CHAT_MSG_ADDON" then
         if self.BreakTimer and self.BreakTimer.OnChatMsgAddon then
