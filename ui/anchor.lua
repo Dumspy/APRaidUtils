@@ -30,6 +30,7 @@ local defaultAnchorDefaults = {
     colorG = 0.82,
     colorB = 0,
     opacity = 1.0,
+    outline = false,
     locked = false,
 }
 
@@ -116,6 +117,22 @@ local function ResolveAnchorFont(fontValue, fontString)
     end
 end
 
+local function ApplyAnchorOutline(fontFlags, outlineEnabled)
+    local flags = {}
+
+    for flag in string.gmatch(fontFlags or "", "[^,]+") do
+        if flag ~= "" and flag ~= "OUTLINE" and flag ~= "THICKOUTLINE" then
+            flags[#flags + 1] = flag
+        end
+    end
+
+    if outlineEnabled then
+        flags[#flags + 1] = "OUTLINE"
+    end
+
+    return table.concat(flags, ",")
+end
+
 local function GetFontDropdownValue(fontValue)
     if fontValue and fontValue ~= "" and SharedMedia:Fetch("font", fontValue, true) then
         return fontValue
@@ -142,12 +159,15 @@ end
 
 local function UpdateAnchorFrameEditState(frame, settings)
     if not allAnchorsVisible then
+        frame:EnableMouse(false)
         frame.UnlockOverlay:Hide()
         frame.DragTexture:Hide()
         frame:SetBackdropBorderColor(0, 0, 0, 0)
         HideSettingsPanel(frame)
         return
     end
+
+    frame:EnableMouse(true)
 
     if settings.locked then
         frame.UnlockOverlay:Hide()
@@ -184,7 +204,13 @@ end
 local function ApplySettingsToFrame(frame, settings)
     local relativeTo = settings.relativeTo and _G[settings.relativeTo] or UIParent
     frame:ClearAllPoints()
-    frame:SetPoint(settings.point or "CENTER", relativeTo, settings.relativePoint or "CENTER", settings.x or 0, settings.y or 0)
+    frame:SetPoint(
+        settings.point or "CENTER",
+        relativeTo,
+        settings.relativePoint or "CENTER",
+        settings.x or 0,
+        settings.y or 0
+    )
     frame:SetScale(settings.scale or 1.0)
     frame:SetSize(settings.maxWidth or 300, settings.maxHeight or 60)
 
@@ -192,9 +218,14 @@ local function ApplySettingsToFrame(frame, settings)
         local fontSize = math.min(settings.fontSize or 14, 72)
         local fontFile, fontFlags = ResolveAnchorFont(settings.font, frame.Text)
         if fontFile then
-            frame.Text:SetFont(fontFile, fontSize, fontFlags or "")
+            frame.Text:SetFont(fontFile, fontSize, ApplyAnchorOutline(fontFlags, settings.outline == true))
         end
-        frame.Text:SetTextColor(settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0)
+        frame.Text:SetTextColor(
+            settings.colorR or 1.0,
+            settings.colorG or 0.82,
+            settings.colorB or 0,
+            settings.opacity or 1.0
+        )
         frame.Text:SetWidth((settings.maxWidth or 300) - 10)
         frame.Text:SetWordWrap(true)
     end
@@ -206,7 +237,13 @@ local function PositionSettingsPanel(panel, anchorFrame, key)
     panel:ClearAllPoints()
 
     local db = GetAnchorDB(key)
-    if db and db.settingsPanelDetached and db.settingsPanelPosition and db.settingsPanelPosition.x ~= nil and db.settingsPanelPosition.y ~= nil then
+    if
+        db
+        and db.settingsPanelDetached
+        and db.settingsPanelPosition
+        and db.settingsPanelPosition.x ~= nil
+        and db.settingsPanelPosition.y ~= nil
+    then
         DF:RestoreFramePosition(panel)
         return
     end
@@ -281,7 +318,11 @@ local function BuildSettingsPanel(frame, key)
         db.settingsPanelPosition.x = x
         db.settingsPanelPosition.y = y
 
-        if self.APMouseDownX and self.APMouseDownY and (math.abs(x - self.APMouseDownX) > 1 or math.abs(y - self.APMouseDownY) > 1) then
+        if
+            self.APMouseDownX
+            and self.APMouseDownY
+            and (math.abs(x - self.APMouseDownX) > 1 or math.abs(y - self.APMouseDownY) > 1)
+        then
             db.settingsPanelDetached = true
         end
     end)
@@ -292,7 +333,8 @@ local function BuildSettingsPanel(frame, key)
     sizeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local sizeSlider = DF:CreateSlider(panel, 200, 16, 10, 72, 1, settings.fontSize, false, nil, "$parentSizeSlider", "Size:")
+    local sizeSlider =
+        DF:CreateSlider(panel, 200, 16, 10, 72, 1, settings.fontSize, false, nil, "$parentSizeSlider", "Size:")
     sizeSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     sizeSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     sizeSlider:SetValue(math.min(settings.fontSize or 14, 72))
@@ -309,7 +351,19 @@ local function BuildSettingsPanel(frame, key)
     widthLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local widthSlider = DF:CreateSlider(panel, 200, 16, 100, 2000, 10, settings.maxWidth or 300, false, nil, "$parentWidthSlider", "Width:")
+    local widthSlider = DF:CreateSlider(
+        panel,
+        200,
+        16,
+        100,
+        2000,
+        10,
+        settings.maxWidth or 300,
+        false,
+        nil,
+        "$parentWidthSlider",
+        "Width:"
+    )
     widthSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     widthSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     widthSlider:SetValue(settings.maxWidth or 300)
@@ -326,7 +380,19 @@ local function BuildSettingsPanel(frame, key)
     heightLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local heightSlider = DF:CreateSlider(panel, 200, 16, 20, 1000, 10, settings.maxHeight or 60, false, nil, "$parentHeightSlider", "Height:")
+    local heightSlider = DF:CreateSlider(
+        panel,
+        200,
+        16,
+        20,
+        1000,
+        10,
+        settings.maxHeight or 60,
+        false,
+        nil,
+        "$parentHeightSlider",
+        "Height:"
+    )
     heightSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     heightSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     heightSlider:SetValue(settings.maxHeight or 60)
@@ -343,16 +409,26 @@ local function BuildSettingsPanel(frame, key)
     fontLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local fontDropdown = DF:CreateFontDropDown(panel, function(_, _, value)
-        if value == "DEFAULT" then
-            SaveAnchorSetting(key, "font", nil)
-        else
-            SaveAnchorSetting(key, "font", value)
-        end
+    local fontDropdown = DF:CreateFontDropDown(
+        panel,
+        function(_, _, value)
+            if value == "DEFAULT" then
+                SaveAnchorSetting(key, "font", nil)
+            else
+                SaveAnchorSetting(key, "font", value)
+            end
 
-        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        ApplySettingsToFrame(frame, currentSettings)
-    end, GetFontDropdownValue(settings.font), 240, 20, nil, "$parentFontDropdown", DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"), true)
+            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+            ApplySettingsToFrame(frame, currentSettings)
+        end,
+        GetFontDropdownValue(settings.font),
+        240,
+        20,
+        nil,
+        "$parentFontDropdown",
+        DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"),
+        true
+    )
     fontDropdown:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     frame.fontDropdown = fontDropdown
     yOffset = yOffset - 30
@@ -406,7 +482,8 @@ local function BuildSettingsPanel(frame, key)
     opacityLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local opacitySlider = DF:CreateSlider(panel, 240, 16, 0.1, 1.0, 0.05, settings.opacity, true, nil, "$parentOpacitySlider", "Opacity:")
+    local opacitySlider =
+        DF:CreateSlider(panel, 240, 16, 0.1, 1.0, 0.05, settings.opacity, true, nil, "$parentOpacitySlider", "Opacity:")
     opacitySlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     opacitySlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     opacitySlider:SetValue(settings.opacity or 1.0)
@@ -418,7 +495,21 @@ local function BuildSettingsPanel(frame, key)
     end)
     yOffset = yOffset - 40
 
-    local lockSwitch, lockLabel = DF:CreateSwitch(panel, function(_, _, value)
+    local outlineSwitch = DF:CreateSwitch(panel, function(_, _, value)
+        SaveAnchorSetting(key, "outline", value)
+        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+        ApplySettingsToFrame(frame, currentSettings)
+    end, settings.outline or false, 20, 20, nil, nil, nil, "$parentOutlineSwitch")
+    outlineSwitch:SetAsCheckBox()
+    outlineSwitch:SetTemplate(DF:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+    outlineSwitch:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+    local outlineLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    outlineLabel:SetPoint("LEFT", outlineSwitch.widget, "RIGHT", 6, 0)
+    outlineLabel:SetText("Text Outline")
+    outlineLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+    yOffset = yOffset - 30
+
+    local lockSwitch = DF:CreateSwitch(panel, function(_, _, value)
         SaveAnchorSetting(key, "locked", value)
         local currentSettings = GetMergedSettings(key, frame.UserDefaults)
         ApplySettingsToFrame(frame, currentSettings)
@@ -478,7 +569,16 @@ local function CreateAnchorFrame(key, userDefaults)
     frame:SetBackdropColor(0, 0, 0, 0)
     frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
 
-    local text = DF:CreateLabel(frame, settings.text or "", math.min(settings.fontSize or 14, 72), {settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0}, DEFAULT_LABEL_FONT_OBJECT, "Text", "$parentText", "OVERLAY")
+    local text = DF:CreateLabel(
+        frame,
+        settings.text or "",
+        math.min(settings.fontSize or 14, 72),
+        { settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0 },
+        DEFAULT_LABEL_FONT_OBJECT,
+        "Text",
+        "$parentText",
+        "OVERLAY"
+    )
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")
@@ -598,6 +698,20 @@ function APAnchor:UpdateAnchorText(key, text)
     if frame and frame.Text then
         frame.Text:SetText(text or "")
     end
+end
+
+function APAnchor:SetAnchorVisible(key, visible)
+    local frame = anchorFrames[key]
+    if not frame then
+        return
+    end
+
+    frame.APFeatureVisible = visible == true
+    if not frame.APFeatureVisible then
+        frame.APTemporaryHidden = false
+    end
+
+    RefreshAnchorFrameVisibility(frame)
 end
 
 function APAnchor:ShowAllAnchors()

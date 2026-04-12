@@ -32,7 +32,9 @@ local function SetEnabled(value)
 end
 
 local function GetPlayerRaidSubgroup()
-    if not IsInRaid() then return 0 end
+    if not IsInRaid() then
+        return 0
+    end
 
     for i = 1, GetNumGroupMembers() do
         if UnitIsUnit("raid" .. i, "player") then
@@ -100,11 +102,20 @@ function LeadPassReminder:CheckConditions()
         return
     end
 
-    if ShouldShowReminder() then
-        frame:Show()
-    else
-        frame:Hide()
+    local APAnchor = AP.APAnchor
+    if not APAnchor then
+        return
     end
+
+    if ShouldShowReminder() then
+        APAnchor:SetAnchorVisible("leadpass", true)
+    else
+        APAnchor:SetAnchorVisible("leadpass", false)
+    end
+end
+
+function LeadPassReminder:OnAddonLoaded()
+    CreateAnchor()
 end
 
 function LeadPassReminder:IsEnabled()
@@ -116,6 +127,8 @@ function LeadPassReminder:SetEnabled(value)
 end
 
 function LeadPassReminder:ToggleAnchors()
+    CreateAnchor()
+
     local APAnchor = AP.APAnchor
     if not APAnchor then
         return

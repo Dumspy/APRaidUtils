@@ -8,6 +8,9 @@ eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 eventFrame:RegisterEvent("ACTIVE_PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     AP:HandleEvent(event, ...)
@@ -24,7 +27,7 @@ function AP:HandleEvent(event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         local isInitialLogin, isReloadingUi = ...
         self:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
-        
+
         if self.SimcExport and self.SimcExport.OnPlayerEnteringWorld then
             self.SimcExport:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
         end
@@ -43,6 +46,18 @@ function AP:HandleEvent(event, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         if self.LeadPassReminder then
             self.LeadPassReminder:CheckConditions()
+        end
+    elseif event == "CHAT_MSG_ADDON" then
+        if self.BreakTimer and self.BreakTimer.OnChatMsgAddon then
+            self.BreakTimer:OnChatMsgAddon(...)
+        end
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        if self.BreakTimer and self.BreakTimer.OnPlayerRegenDisabled then
+            self.BreakTimer:OnPlayerRegenDisabled()
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if self.BreakTimer and self.BreakTimer.OnPlayerRegenEnabled then
+            self.BreakTimer:OnPlayerRegenEnabled()
         end
     end
 end
