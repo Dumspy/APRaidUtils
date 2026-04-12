@@ -21,10 +21,14 @@ local function GetLeadPassModule()
     return AP.LeadPassReminder
 end
 
+local function GetHousingRollModule()
+    return AP.HousingRoll
+end
+
 local function GetM33kAurasStatusText()
     local Reminders = GetRemindersModule()
     if Reminders and Reminders.GetM33kAurasStatus then
-        local status, msg = Reminders:GetM33kAurasStatus()
+        local status = Reminders:GetM33kAurasStatus()
         if status == "missing" then
             return "|cffff4444M33kAuras is not installed. Reminders require M33kAuras.|r"
         elseif status == "missing_template" then
@@ -122,10 +126,42 @@ local function GetSections()
             },
         },
         {
+            id = "housingRoll",
+            type = "group",
+            name = "Housing Auto Roll",
+            order = 2,
+            items = {
+                {
+                    id = "housingRollMode",
+                    type = "select",
+                    name = "Housing Roll Behavior",
+                    desc = "Automatically roll on housing-class loot when the group loot frame appears.",
+                    get = function()
+                        local module = GetHousingRollModule()
+                        return module and module:GetMode() or "disabled"
+                    end,
+                    set = function(value)
+                        local module = GetHousingRollModule()
+                        if module then
+                            module:SetMode(value)
+                        end
+                    end,
+                    values = function()
+                        local module = GetHousingRollModule()
+                        return module and module:GetModeOptions() or {}
+                    end,
+                    order = 1,
+                    df = {
+                        width = 180,
+                    },
+                },
+            },
+        },
+        {
             id = "reminders",
             type = "group",
             name = "Reminders",
-            order = 2,
+            order = 3,
             items = {
                 {
                     id = "remindersIntro",

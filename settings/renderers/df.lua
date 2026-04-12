@@ -121,6 +121,33 @@ local function BuildMenuItems(framework, items, menuItems)
                     get = item.get,
                     set = WrapValueSetter(item),
                 }
+            elseif item.type == "select" then
+                menuItems[#menuItems + 1] = {
+                    type = "select",
+                    name = ResolveValue(item.name),
+                    desc = ResolveValue(item.desc),
+                    order = item.order or index,
+                    width = item.df and item.df.width or 140,
+                    disableif = item.disabled,
+                    get = item.get,
+                    set = WrapValueSetter(item),
+                    values = function()
+                        local values = ResolveValue(item.values) or {}
+                        local options = {}
+
+                        for _, value in ipairs(values) do
+                            options[#options + 1] = {
+                                value = value.value,
+                                label = value.label,
+                                onclick = function(_, _, selectedValue)
+                                    item.set(selectedValue)
+                                end,
+                            }
+                        end
+
+                        return options
+                    end,
+                }
             end
         end
     end

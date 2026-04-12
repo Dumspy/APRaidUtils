@@ -8,6 +8,8 @@ eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 eventFrame:RegisterEvent("ACTIVE_PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+eventFrame:RegisterEvent("START_LOOT_ROLL")
+eventFrame:RegisterEvent("CONFIRM_LOOT_ROLL")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     AP:HandleEvent(event, ...)
@@ -24,7 +26,7 @@ function AP:HandleEvent(event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         local isInitialLogin, isReloadingUi = ...
         self:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
-        
+
         if self.SimcExport and self.SimcExport.OnPlayerEnteringWorld then
             self.SimcExport:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
         end
@@ -43,6 +45,14 @@ function AP:HandleEvent(event, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         if self.LeadPassReminder then
             self.LeadPassReminder:CheckConditions()
+        end
+    elseif event == "START_LOOT_ROLL" then
+        if self.HousingRoll and self.HousingRoll.OnStartLootRoll then
+            self.HousingRoll:OnStartLootRoll(...)
+        end
+    elseif event == "CONFIRM_LOOT_ROLL" then
+        if self.HousingRoll and self.HousingRoll.OnConfirmLootRoll then
+            self.HousingRoll:OnConfirmLootRoll(...)
         end
     end
 end
