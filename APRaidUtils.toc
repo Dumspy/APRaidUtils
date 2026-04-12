@@ -16,6 +16,7 @@ comms.lua
 rosterManager.lua
 leadpass.lua
 housingRoll.lua
+breaktimer.lua
 settings\registry.lua
 settings\renderers\df.lua
 simcExport\main.lua

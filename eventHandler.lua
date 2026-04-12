@@ -10,6 +10,9 @@ eventFrame:RegisterEvent("ACTIVE_PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("START_LOOT_ROLL")
 eventFrame:RegisterEvent("CONFIRM_LOOT_ROLL")
+eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     AP:HandleEvent(event, ...)
@@ -53,6 +56,18 @@ function AP:HandleEvent(event, ...)
     elseif event == "CONFIRM_LOOT_ROLL" then
         if self.HousingRoll and self.HousingRoll.OnConfirmLootRoll then
             self.HousingRoll:OnConfirmLootRoll(...)
+        end
+    elseif event == "CHAT_MSG_ADDON" then
+        if self.BreakTimer and self.BreakTimer.OnChatMsgAddon then
+            self.BreakTimer:OnChatMsgAddon(...)
+        end
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        if self.BreakTimer and self.BreakTimer.OnPlayerRegenDisabled then
+            self.BreakTimer:OnPlayerRegenDisabled()
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if self.BreakTimer and self.BreakTimer.OnPlayerRegenEnabled then
+            self.BreakTimer:OnPlayerRegenEnabled()
         end
     end
 end
