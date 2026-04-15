@@ -36,17 +36,29 @@ local defaultAnchorDefaults = {
 
 local DEFAULT_LABEL_FONT_OBJECT = "GameFontNormal"
 
-local function GetAnchorDB(key)
-    if not APRaidUtilsDB or not APRaidUtilsDB.profile then
+local function GetAnchorsDB()
+    if not APRaidUtilsDB or type(APRaidUtilsDB.profile) ~= "table" then
         return nil
     end
-    if not APRaidUtilsDB.profile.anchors then
+
+    if type(APRaidUtilsDB.profile.anchors) ~= "table" then
         APRaidUtilsDB.profile.anchors = {}
     end
-    if not APRaidUtilsDB.profile.anchors[key] then
-        APRaidUtilsDB.profile.anchors[key] = {}
+
+    return APRaidUtilsDB.profile.anchors
+end
+
+local function GetAnchorDB(key)
+    local anchorsDB = GetAnchorsDB()
+    if not anchorsDB then
+        return nil
     end
-    return APRaidUtilsDB.profile.anchors[key]
+
+    if type(anchorsDB[key]) ~= "table" then
+        anchorsDB[key] = {}
+    end
+
+    return anchorsDB[key]
 end
 
 local function GetMergedSettings(key, userDefaults)
@@ -240,7 +252,7 @@ local function PositionSettingsPanel(panel, anchorFrame, key)
     if
         db
         and db.settingsPanelDetached
-        and db.settingsPanelPosition
+        and type(db.settingsPanelPosition) == "table"
         and db.settingsPanelPosition.x ~= nil
         and db.settingsPanelPosition.y ~= nil
     then
@@ -289,7 +301,10 @@ local function BuildSettingsPanel(frame, key)
 
     local db = GetAnchorDB(key)
     if db then
-        db.settingsPanelPosition = db.settingsPanelPosition or {}
+        if type(db.settingsPanelPosition) ~= "table" then
+            db.settingsPanelPosition = {}
+        end
+
         panel.db = {
             position = db.settingsPanelPosition,
         }

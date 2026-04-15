@@ -37,11 +37,11 @@ local MODE_OPTIONS = {
 local pendingConfirmations = {}
 
 local function GetSettings()
-    if not APRaidUtilsDB or not APRaidUtilsDB.profile then
+    if not APRaidUtilsDB or type(APRaidUtilsDB.profile) ~= "table" then
         return { mode = MODE_DISABLED }
     end
 
-    if not APRaidUtilsDB.profile.housingRoll then
+    if type(APRaidUtilsDB.profile.housingRoll) ~= "table" then
         rawset(APRaidUtilsDB.profile, "housingRoll", {
             mode = MODE_DISABLED,
         })

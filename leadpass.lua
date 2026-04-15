@@ -12,12 +12,14 @@ local DEFAULT_REMINDER_TEXT = "You're in group 5-8 on Mythic. Consider passing l
 local anchorFrame = nil
 
 local function GetSettings()
-    if not APRaidUtilsDB or not APRaidUtilsDB.profile then
+    if not APRaidUtilsDB or type(APRaidUtilsDB.profile) ~= "table" then
         return { enabled = false }
     end
-    if not APRaidUtilsDB.profile.leadpass then
+
+    if type(APRaidUtilsDB.profile.leadpass) ~= "table" then
         APRaidUtilsDB.profile.leadpass = {}
     end
+
     return APRaidUtilsDB.profile.leadpass
 end
 
