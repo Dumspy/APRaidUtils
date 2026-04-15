@@ -376,6 +376,7 @@ function AP:CleanupSimcData()
     if self._simcCleanupDone then
         return
     end
+    self._simcCleanupDone = true
 
     local simc = self:GetSimcStorage()
     local maxLevel = self:GetEffectiveMaxLevel()
@@ -383,7 +384,14 @@ function AP:CleanupSimcData()
     for characterKey, character in pairs(simc.characters) do
         NormalizeSimcCharacter(character)
 
-        if type(character) ~= "table" or not character.name or (character.level or 0) < maxLevel then
+        local characterLevel = type(character) == "table" and tonumber(character.level) or nil
+
+        if
+            type(character) ~= "table"
+            or type(character.name) ~= "string"
+            or character.name == ""
+            or (characterLevel or 0) < maxLevel
+        then
             simc.characters[characterKey] = nil
             simc.exports[characterKey] = nil
         end
@@ -393,14 +401,12 @@ function AP:CleanupSimcData()
         if
             not simc.characters[characterKey]
             or type(exportData) ~= "table"
-            or not exportData.text
+            or type(exportData.text) ~= "string"
             or exportData.text == ""
         then
             simc.exports[characterKey] = nil
         end
     end
-
-    self._simcCleanupDone = true
 end
 
 function AP:RegisterCurrentCharacter()
