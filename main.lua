@@ -127,16 +127,45 @@ local function NormalizeSimcCharacter(character)
     return character
 end
 
+local function EnsureSimcStorage()
+    if type(APRaidUtilsDB) ~= "table" then
+        APRaidUtilsDB = {}
+    end
+
+    if type(APRaidUtilsDB.profile) ~= "table" then
+        APRaidUtilsDB.profile = {}
+    end
+
+    if type(APRaidUtilsDB.global) ~= "table" then
+        APRaidUtilsDB.global = {}
+    end
+
+    if type(APRaidUtilsDB.profile.breaktimer) ~= "table" then
+        APRaidUtilsDB.profile.breaktimer = {}
+    end
+
+    if type(APRaidUtilsDB.global.breaktimer) ~= "table" then
+        APRaidUtilsDB.global.breaktimer = {}
+    end
+
+    if type(APRaidUtilsDB.global.simc) ~= "table" then
+        APRaidUtilsDB.global.simc = {}
+    end
+
+    local simc = APRaidUtilsDB.global.simc
+    if type(simc.characters) ~= "table" then
+        simc.characters = {}
+    end
+
+    if type(simc.exports) ~= "table" then
+        simc.exports = {}
+    end
+
+    return simc
+end
+
 local function InitializeSavedVariables()
-    APRaidUtilsDB = APRaidUtilsDB or {}
-    APRaidUtilsDB.profile = APRaidUtilsDB.profile or {}
-    APRaidUtilsDB.global = APRaidUtilsDB.global or {}
-    APRaidUtilsDB.profile.breaktimer = APRaidUtilsDB.profile.breaktimer or {}
-    APRaidUtilsDB.global.breaktimer = APRaidUtilsDB.global.breaktimer or {}
-    APRaidUtilsDB.global.simc = APRaidUtilsDB.global.simc or {
-        characters = {},
-        exports = {},
-    }
+    EnsureSimcStorage()
 end
 
 function AP:Print(...)
@@ -307,7 +336,7 @@ function AP:GetPlayerCharacterInfo()
 end
 
 function AP:GetSimcStorage()
-    return APRaidUtilsDB and APRaidUtilsDB.global and APRaidUtilsDB.global.simc or { characters = {}, exports = {} }
+    return EnsureSimcStorage()
 end
 
 function AP:IsSimcExportValid(exportText)
@@ -347,7 +376,6 @@ function AP:CleanupSimcData()
     if self._simcCleanupDone then
         return
     end
-    self._simcCleanupDone = true
 
     local simc = self:GetSimcStorage()
     local maxLevel = self:GetEffectiveMaxLevel()
@@ -371,6 +399,8 @@ function AP:CleanupSimcData()
             simc.exports[characterKey] = nil
         end
     end
+
+    self._simcCleanupDone = true
 end
 
 function AP:RegisterCurrentCharacter()
