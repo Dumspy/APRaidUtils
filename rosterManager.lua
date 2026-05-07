@@ -163,48 +163,100 @@ function RosterManager:InviteMissing(roster)
     return invited
 end
 
-function RosterManager:FindFirstAvailableGroup()
-    local currentMembers = self:GetCurrentRaidMembers()
-    local groupCounts = {0, 0, 0, 0}
-    
-    for _, member in pairs(currentMembers) do
-        if member.subgroup >= 1 and member.subgroup <= 4 then
-            groupCounts[member.subgroup] = groupCounts[member.subgroup] + 1
-        end
-    end
-    
-    for group = 1, 4 do
-        if groupCounts[group] < 5 then
-            return group
-        end
-    end
-    
-    return 1
-end
-
 function RosterManager:MoveExtras(roster)
-    if not IsInRaid() or not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
+    if not IsInRaid() or (not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player")) then
         return 0, 0, "Error: You must be raid leader or assistant"
     end
-    
-    local movedOut = 0
-    local movedIn = 0
+
     local currentMembers = self:GetCurrentRaidMembers()
-    local targetGroup = 7
-    
+    local groupOccupancy = {}
+    for i = 1, 8 do
+        groupOccupancy[i] = 0
+    end
+
+    local misplacedRostered = {}
+    local misplacedExtras = {}
+
     for _, member in pairs(currentMembers) do
         local normalized = self:NormalizePlayerName(member.name)
-        if roster[normalized] and member.subgroup >= 7 then
-            local newGroup = self:FindFirstAvailableGroup()
-            SetRaidSubgroup(member.index, newGroup)
-            movedIn = movedIn + 1
-        elseif not roster[normalized] and member.subgroup < 7 then
-            SetRaidSubgroup(member.index, targetGroup)
-            movedOut = movedOut + 1
-            targetGroup = targetGroup == 7 and 8 or 7
+        local inRoster = roster[normalized] ~= nil
+
+        if inRoster then
+            if member.subgroup > 4 then
+                table.insert(misplacedRostered, member)
+            else
+                groupOccupancy[member.subgroup] = groupOccupancy[member.subgroup] + 1
+            end
+        else
+            if member.subgroup <= 4 then
+                table.insert(misplacedExtras, member)
+            else
+                groupOccupancy[member.subgroup] = groupOccupancy[member.subgroup] + 1
+            end
         end
     end
-    
+
+    local movedOut = 0
+    local movedIn = 0
+
+    -- Prioritize rostered players in groups 7 & 8 for swaps
+    -- (So that extras from groups 1-4 end up in 7 or 8)
+    table.sort(misplacedRostered, function(a, b)
+        return a.subgroup > b.subgroup
+    end)
+
+    -- Pass 1: Swaps (Essential for full raids)
+    while #misplacedExtras > 0 and #misplacedRostered > 0 do
+        local extra = table.remove(misplacedExtras)
+        local rostered = table.remove(misplacedRostered, 1) -- Take from the highest subgroup first
+
+        SwapRaidSubgroup(extra.index, rostered.index)
+
+        -- Both are now correctly placed in their target sections relative to the 1-4 / 5-8 split
+        -- Occupancy counts for the groups they moved TO are now incremented
+        groupOccupancy[extra.subgroup] = groupOccupancy[extra.subgroup] + 1 -- rostered moved here
+        groupOccupancy[rostered.subgroup] = groupOccupancy[rostered.subgroup] + 1 -- extra moved here
+
+        movedOut = movedOut + 1
+        movedIn = movedIn + 1
+    end
+
+    -- Pass 2: Move remaining extras out of groups 1-4
+    -- Target groups 7 & 8 first, then 5 & 6
+    local outPriorities = { 7, 8, 5, 6 }
+    for _, member in ipairs(misplacedExtras) do
+        local targetSubgroup = nil
+        for _, group in ipairs(outPriorities) do
+            if groupOccupancy[group] < 5 then
+                targetSubgroup = group
+                break
+            end
+        end
+
+        if targetSubgroup then
+            SetRaidSubgroup(member.index, targetSubgroup)
+            groupOccupancy[targetSubgroup] = groupOccupancy[targetSubgroup] + 1
+            movedOut = movedOut + 1
+        end
+    end
+
+    -- Pass 3: Move remaining rostered into groups 1-4
+    for _, member in ipairs(misplacedRostered) do
+        local targetSubgroup = nil
+        for group = 1, 4 do
+            if groupOccupancy[group] < 5 then
+                targetSubgroup = group
+                break
+            end
+        end
+
+        if targetSubgroup then
+            SetRaidSubgroup(member.index, targetSubgroup)
+            groupOccupancy[targetSubgroup] = groupOccupancy[targetSubgroup] + 1
+            movedIn = movedIn + 1
+        end
+    end
+
     return movedOut, movedIn
 end
 
@@ -234,10 +286,11 @@ function RosterManager:GetRosterPreview(rosterString)
     if IsInRaid() then
         for _, member in pairs(self:GetCurrentRaidMembers()) do
             local normalized = self:NormalizePlayerName(member.name)
-            if roster[normalized] and member.subgroup >= 7 then
+            local inRoster = roster[normalized] ~= nil
+            if inRoster and member.subgroup > 4 then
                 table.insert(toMoveIn, member.name .. " (Group " .. member.subgroup .. " → 1-4)")
-            elseif not roster[normalized] and member.subgroup < 7 then
-                table.insert(toMoveOut, member.name .. " (Group " .. member.subgroup .. " → 7/8)")
+            elseif not inRoster and member.subgroup <= 4 then
+                table.insert(toMoveOut, member.name .. " (Group " .. member.subgroup .. " → Out)")
             end
         end
     end
@@ -259,7 +312,7 @@ function RosterManager:ProcessRoster(rosterString)
         return result, false, invited, movedOut, movedIn
     end
 
-    local result = string.format("Processed %d roster members\nInvited: %d\nMoved to 7/8: %d\nMoved to 1-4: %d",
+    local result = string.format("Processed %d roster members\nInvited: %d\nMoved Out: %d\nMoved to 1-4: %d",
         rosterCount, invited, movedOut, movedIn)
 
     return result, true, invited, movedOut, movedIn
@@ -286,7 +339,7 @@ function RosterManager:MoveOnly(rosterString)
         return moveError, false, movedOut, movedIn
     end
 
-    return string.format("Moved to 7/8: %d | Moved to 1-4: %d", movedOut, movedIn), true, movedOut, movedIn
+    return string.format("Moved Out: %d | Moved to 1-4: %d", movedOut, movedIn), true, movedOut, movedIn
 end
 
 function RosterManager:ShowUI()
