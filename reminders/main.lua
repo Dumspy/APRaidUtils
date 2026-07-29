@@ -531,8 +531,26 @@ function Reminders:HandleAddonLoaded(_, addonName)
     end
 end
 
+function Reminders:SyncColorsForEncounter(encounterId)
+    if not IsPositiveNumber(encounterId) or type(M33kAurasSaved) ~= "table" or type(M33kAurasSaved.displays) ~= "table" then
+        return
+    end
+
+    local count = 0
+    for _, auraData in pairs(M33kAurasSaved.displays) do
+        if auraData.ap_source == "APRaidUtils" and not auraData.ap_is_template and tonumber(auraData.ap_encounter_id) == encounterId then
+            if self:SyncColors(auraData) then
+                count = count + 1
+            end
+        end
+    end
+
+    return count
+end
+
 function Reminders:HandleEncounterStart(_, encounterId)
     self.currentEncounterId = encounterId
+    self:SyncColorsForEncounter(encounterId)
 end
 
 function Reminders:HandleEncounterEnd(_, encounterId)
@@ -547,6 +565,67 @@ end
 
 function Reminders:GetBigWigsCore()
     return type(BigWigs) == "table" and BigWigs or nil
+end
+
+function Reminders:GetBigWigsColor(moduleName, optionKey)
+    local core = self:GetBigWigsCore()
+    if not core or not core.GetPlugin then
+        return { 1, 0.9, 0.2, 1 }
+    end
+
+    local colors = core:GetPlugin("Colors", true)
+    if not colors or not colors.GetColorTable then
+        return { 1, 0.9, 0.2, 1 }
+    end
+
+    local color = colors:GetColorTable("barColor", moduleName, optionKey)
+    if type(color) ~= "table" then
+        return { 1, 0.9, 0.2, 1 }
+    end
+
+    local r, g, b, a = unpack(color)
+    return { r or 1, g or 0.9, b or 0.2, a or 1 }
+end
+
+function Reminders:SyncColors(auraData)
+    if not auraData or auraData.ap_source ~= "APRaidUtils" or auraData.ap_is_template then
+        return
+    end
+
+    local moduleName = auraData.ap_module_name
+    local optionKey = auraData.ap_option_key
+
+    -- Fallback for older reminders: try to extract from definitionId if missing
+    if not optionKey and auraData.ap_definition_id then
+        local spellId = auraData.ap_definition_id:match("|spell:(%d+)$")
+        if spellId then
+            optionKey = tonumber(spellId)
+        else
+            optionKey = auraData.ap_definition_id:match("|opt:(.+)$")
+        end
+    end
+
+    if moduleName and optionKey then
+        auraData.color = self:GetBigWigsColor(moduleName, optionKey)
+        return true
+    end
+
+    return false
+end
+
+function Reminders:SyncAllColors()
+    if type(M33kAurasSaved) ~= "table" or type(M33kAurasSaved.displays) ~= "table" then
+        return
+    end
+
+    local count = 0
+    for _, auraData in pairs(M33kAurasSaved.displays) do
+        if self:SyncColors(auraData) then
+            count = count + 1
+        end
+    end
+
+    return count
 end
 
 function Reminders:EnsureBigWigsCoreLoaded()
@@ -1377,6 +1456,7 @@ function Reminders:PrimeReminderData(filterValue)
     if filterValue then
         self:EnsureRaidMetadataLoaded(filterValue)
     end
+    self:SyncAllColors()
 end
 
 function Reminders:GetDefinitionCount()

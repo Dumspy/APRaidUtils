@@ -519,8 +519,13 @@ function AuraBuilder:BuildAuraData(rule, definition)
     aura.ap_definition_id = definitionId
     aura.ap_is_template = nil
     aura.ap_module_name = definition.moduleName or rule.moduleName or "unknown"
+    aura.ap_option_key = definition.optionKey or rule.optionKey
     aura.ap_boss_name = definition.bossName or rule.bossName or "Unknown"
     aura.ap_phase_filters = rule.phaseFilters and CopyTableDeep(rule.phaseFilters) or {}
+
+    if AP.Reminders and AP.Reminders.GetBigWigsColor then
+        aura.color = AP.Reminders:GetBigWigsColor(aura.ap_module_name, aura.ap_option_key)
+    end
 
     aura.parent = definition.bossName or rule.bossName or "Unknown Boss"
 
