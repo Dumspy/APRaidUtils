@@ -1,22 +1,59 @@
 local AP = _G["APRaidUtils"]
 local eventFrame = AP.eventFrame
 
+-- Core events are always needed for addon lifecycle.
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
-eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
-eventFrame:RegisterEvent("ACTIVE_PLAYER_SPECIALIZATION_CHANGED")
-eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-eventFrame:RegisterEvent("START_LOOT_ROLL")
-eventFrame:RegisterEvent("CONFIRM_LOOT_ROLL")
-eventFrame:RegisterEvent("CHAT_MSG_ADDON")
-eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     AP:HandleEvent(event, ...)
 end)
+
+-- Feature events are registered lazily, only while their feature is enabled.
+-- This is how we honour "zero cost unless enabled": a feature you never turn on
+-- registers no events, builds no frames, and runs no handler work.
+local featureEvents = {
+    leadpass = { "GROUP_ROSTER_UPDATE" },
+    breaktimer = { "CHAT_MSG_ADDON", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" },
+}
+
+local activeFeatures = {}
+
+local function EventIsUsedElsewhere(feature, event)
+    for other in pairs(activeFeatures) do
+        if other ~= feature then
+            for _, otherEvent in ipairs(featureEvents[other]) do
+                if otherEvent == event then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+function AP:EnableFeatureEvents(feature)
+    if activeFeatures[feature] then
+        return
+    end
+    for _, event in ipairs(featureEvents[feature] or {}) do
+        eventFrame:RegisterEvent(event)
+    end
+    activeFeatures[feature] = true
+end
+
+function AP:DisableFeatureEvents(feature)
+    if not activeFeatures[feature] then
+        return
+    end
+    for _, event in ipairs(featureEvents[feature] or {}) do
+        if not EventIsUsedElsewhere(feature, event) then
+            eventFrame:UnregisterEvent(event)
+        end
+    end
+    activeFeatures[feature] = nil
+end
 
 function AP:HandleEvent(event, ...)
     if event == "ADDON_LOADED" then
@@ -29,35 +66,13 @@ function AP:HandleEvent(event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         local isInitialLogin, isReloadingUi = ...
         self:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
-
-        if self.SimcExport and self.SimcExport.OnPlayerEnteringWorld then
-            self.SimcExport:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
-        end
-    elseif event == "PLAYER_EQUIPMENT_CHANGED" then
-        if self.SimcExport and self.SimcExport.OnPlayerEquipmentChanged then
-            self.SimcExport:OnPlayerEquipmentChanged(...)
-        end
-    elseif event == "TRAIT_CONFIG_UPDATED" then
-        if self.SimcExport and self.SimcExport.OnTraitConfigUpdated then
-            self.SimcExport:OnTraitConfigUpdated(...)
-        end
-    elseif event == "ACTIVE_PLAYER_SPECIALIZATION_CHANGED" then
-        if self.SimcExport and self.SimcExport.OnActivePlayerSpecializationChanged then
-            self.SimcExport:OnActivePlayerSpecializationChanged(...)
-        end
     elseif event == "GROUP_ROSTER_UPDATE" then
-        if self.LeadPassReminder then
+        -- Only reachable while leadpass is enabled (event is gated).
+        if self.LeadPassReminder and self.LeadPassReminder.CheckConditions then
             self.LeadPassReminder:CheckConditions()
         end
-    elseif event == "START_LOOT_ROLL" then
-        if self.HousingRoll and self.HousingRoll.OnStartLootRoll then
-            self.HousingRoll:OnStartLootRoll(...)
-        end
-    elseif event == "CONFIRM_LOOT_ROLL" then
-        if self.HousingRoll and self.HousingRoll.OnConfirmLootRoll then
-            self.HousingRoll:OnConfirmLootRoll(...)
-        end
     elseif event == "CHAT_MSG_ADDON" then
+        -- Only reachable while breaktimer is enabled (event is gated).
         if self.BreakTimer and self.BreakTimer.OnChatMsgAddon then
             self.BreakTimer:OnChatMsgAddon(...)
         end

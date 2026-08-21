@@ -30,7 +30,12 @@ end
 local function SetEnabled(value)
     local settings = GetSettings()
     settings.enabled = value == true
-    LeadPassReminder:CheckConditions()
+
+    if settings.enabled then
+        LeadPassReminder:Enable()
+    else
+        LeadPassReminder:Disable()
+    end
 end
 
 local function GetPlayerRaidSubgroup()
@@ -99,6 +104,10 @@ local function CreateAnchor()
 end
 
 function LeadPassReminder:CheckConditions()
+    if not IsEnabled() then
+        return
+    end
+
     local frame = CreateAnchor()
     if not frame then
         return
@@ -116,8 +125,33 @@ function LeadPassReminder:CheckConditions()
     end
 end
 
-function LeadPassReminder:OnAddonLoaded()
+local function HideAnchor()
+    if anchorFrame and AP.APAnchor then
+        AP.APAnchor:SetAnchorVisible("leadpass", false)
+    end
+end
+
+function LeadPassReminder:Enable()
+    AP:EnableFeatureEvents("leadpass")
     CreateAnchor()
+
+    if self:IsEnabled() then
+        self:CheckConditions()
+    end
+end
+
+function LeadPassReminder:Disable()
+    AP:DisableFeatureEvents("leadpass")
+    HideAnchor()
+end
+
+function LeadPassReminder:Restore()
+    if self:IsEnabled() then
+        self:Enable()
+        return
+    end
+
+    HideAnchor()
 end
 
 function LeadPassReminder:IsEnabled()
@@ -129,6 +163,10 @@ function LeadPassReminder:SetEnabled(value)
 end
 
 function LeadPassReminder:ToggleAnchors()
+    if not self:IsEnabled() then
+        return
+    end
+
     CreateAnchor()
 
     local APAnchor = AP.APAnchor

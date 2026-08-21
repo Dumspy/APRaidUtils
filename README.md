@@ -20,8 +20,8 @@ This repo now uses repo-owned Lua tooling config so editors and AI agents can sh
 ## Common Commands
 
 - `lua-language-server --version`
-- `stylua main.lua eventHandler.lua comms.lua rosterManager.lua leadpass.lua settings simcExport reminders versionChecker ui`
-- `luacheck main.lua eventHandler.lua comms.lua rosterManager.lua leadpass.lua settings simcExport reminders versionChecker ui`
+- `stylua main.lua eventHandler.lua comms.lua rosterManager.lua leadpass.lua settings versionChecker ui`
+- `luacheck main.lua eventHandler.lua comms.lua rosterManager.lua leadpass.lua settings versionChecker ui`
 - `find . -name '*.lua' -not -path './libs/*' -not -path './.lua-libs/*' -print0 | xargs -0 -n1 luac -p`
 
 ## LuaLS Notes

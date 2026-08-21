@@ -171,19 +171,6 @@ end
 
 ## Performance Optimizations
 
-### CleanupSimcData Caching
-
-**Before:** Called on every `GetSimcCharacter()`, `GetSimcCharacters()`, etc.
-**After:** Runs once per session:
-
-```lua
-function AP:CleanupSimcData()
-    if self._simcCleanupDone then return end
-    self._simcCleanupDone = true
-    -- ... cleanup logic
-end
-```
-
 ### Optimized Subgroup Lookup
 
 **Before:**
@@ -245,10 +232,6 @@ end
 | `comms.lua` | Security validation, rate limiting, direct AceComm usage |
 | `leadpass.lua` | Module conversion, optimized subgroup lookup |
 | `rosterManager.lua` | Module conversion |
-| `simcExport/main.lua` | Module conversion |
-| `reminders/main.lua` | Module conversion |
-| `reminders/aurabuilder.lua` | Module conversion |
-| `reminders/ui.lua` | Reference updates |
 | `versionChecker/main.lua` | Module conversion |
 | `versionChecker/client.lua` | Reference updates |
 | `versionChecker/server.lua` | Reference updates |
@@ -269,7 +252,7 @@ end
 2. Test `/ap` command
 3. Verify saved variables persist (check APRaidUtilsDB)
 4. Test guild/raid communication
-5. Test each UI tab (SimC, Roster, Versions, Reminders, Settings)
+5. Test each UI tab (Roster, Versions, Settings)
 
 ---
 

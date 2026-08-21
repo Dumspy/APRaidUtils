@@ -11,7 +11,6 @@ local DEFAULT_PLACEHOLDER_TEXT = "Break - 5:00\n\nEnds at 17:30:00"
 local date = _G.date
 local time = _G.time
 local strsplit = _G.strsplit
-local InCombatLockdown = _G.InCombatLockdown
 local RegisterAddonMessagePrefix = (C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix)
     or _G.RegisterAddonMessagePrefix
 
@@ -197,6 +196,10 @@ local function StopTicker()
 end
 
 local function RefreshAnchor()
+    if not BreakTimer:IsEnabled() then
+        return
+    end
+
     local frame = CreateAnchor()
     if not frame then
         return
@@ -245,6 +248,10 @@ local function StartTicker()
 end
 
 local function StartBreak(source, seconds, startedBy, isDBM)
+    if not BreakTimer:IsEnabled() then
+        return
+    end
+
     local duration = tonumber(seconds)
     if not duration then
         return
@@ -311,17 +318,37 @@ local function RegisterAddonPrefixes()
     RegisterAddonMessagePrefix(GetDBMPrefix())
 end
 
-function BreakTimer:OnAddonLoaded()
-    RegisterAddonPrefixes()
-    CreateAnchor()
-    RestoreActiveBreak()
-    RefreshAnchor()
+local function UnregisterBigWigsMessages()
+    if not bigWigsRegistered then
+        return
+    end
+
+    if CanUseBigWigsEvents() and BigWigsLoader.UnregisterMessage then
+        BigWigsLoader.UnregisterMessage(bigWigsCallbacks, "BigWigs_StartBreak")
+        BigWigsLoader.UnregisterMessage(bigWigsCallbacks, "BigWigs_StopBreak")
+    end
+
+    bigWigsRegistered = false
 end
 
-function BreakTimer:OnPlayerLogin()
+local function HideAnchor()
+    local APAnchor = AP.APAnchor
+    if anchorFrame and APAnchor then
+        APAnchor:SetAnchorVisible("breaktimer", false)
+    end
+end
+
+function BreakTimer:Enable()
+    if not self:IsEnabled() then
+        return
+    end
+
     UpdateReceiveMode()
+    RegisterAddonPrefixes()
     RegisterBigWigsMessages()
-    hiddenForCombat = InCombatLockdown and InCombatLockdown() or false
+    AP:EnableFeatureEvents("breaktimer")
+    CreateAnchor()
+    RestoreActiveBreak()
 
     if activeBreak and (activeBreak.endsAt or 0) > time() then
         StartTicker()
@@ -330,7 +357,27 @@ function BreakTimer:OnPlayerLogin()
     RefreshAnchor()
 end
 
+function BreakTimer:Disable()
+    AP:DisableFeatureEvents("breaktimer")
+    UnregisterBigWigsMessages()
+    StopTicker()
+    HideAnchor()
+end
+
+function BreakTimer:Restore()
+    if self:IsEnabled() then
+        self:Enable()
+        return
+    end
+
+    StopTicker()
+end
+
 function BreakTimer:OnChatMsgAddon(prefix, message, channel, sender)
+    if not self:IsEnabled() then
+        return
+    end
+
     if receiveMode ~= RAW_MODE then
         return
     end
@@ -353,11 +400,19 @@ function BreakTimer:OnChatMsgAddon(prefix, message, channel, sender)
 end
 
 function BreakTimer:OnPlayerRegenDisabled()
+    if not self:IsEnabled() then
+        return
+    end
+
     hiddenForCombat = true
     RefreshAnchor()
 end
 
 function BreakTimer:OnPlayerRegenEnabled()
+    if not self:IsEnabled() then
+        return
+    end
+
     hiddenForCombat = false
 
     if activeBreak and (activeBreak.endsAt or 0) <= time() then
@@ -377,7 +432,12 @@ function BreakTimer:SetEnabled(value)
     if settings then
         settings.enabled = value == true
     end
-    RefreshAnchor()
+
+    if value == true then
+        self:Enable()
+    else
+        self:Disable()
+    end
 end
 
 function BreakTimer:GetShowCountdown()

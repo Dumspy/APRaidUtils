@@ -2,132 +2,15 @@ local AP = {}
 _G["APRaidUtils"] = AP
 _G["AP"] = AP
 
-local time = _G.time
-
 local eventFrame = CreateFrame("Frame")
 AP.eventFrame = eventFrame
 eventFrame:SetAllPoints(UIParent)
 eventFrame:SetFrameStrata("BACKGROUND")
 
-local simcRequiredEquipmentSlots = {
-    "head",
-    "neck",
-    "shoulder",
-    "back",
-    "chest",
-    "wrist",
-    "hands",
-    "waist",
-    "legs",
-    "feet",
-    "finger1",
-    "finger2",
-    "trinket1",
-    "trinket2",
-    "main_hand",
-    "off_hand",
-}
 local addonVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
 local IsDevVersion = (addonVersion == "@project-version@")
 
-local function GetSimcLineValue(exportText, prefix)
-    return exportText:match("\n" .. prefix .. "([^\n]*)") or exportText:match("^" .. prefix .. "([^\n]*)")
-end
-
-local function NormalizeRealmForKey(realmName)
-    if not realmName or realmName == "" then
-        return ""
-    end
-
-    return realmName:gsub("[%s%-']", ""):lower()
-end
-
-local function GetNormalizedRealmNameSafe()
-    local realmName = nil
-    if GetNormalizedRealmName then
-        realmName = GetNormalizedRealmName()
-        if realmName and realmName ~= "" then
-            return NormalizeRealmForKey(realmName)
-        end
-    end
-
-    realmName = GetRealmName() or ""
-    return NormalizeRealmForKey(realmName)
-end
-
-local function WrapTextInClassColor(classFile, text)
-    if type(classFile) == "number" then
-        local classInfo = C_CreatureInfo and C_CreatureInfo.GetClassInfo and C_CreatureInfo.GetClassInfo(classFile)
-        classFile = classInfo and classInfo.classFile
-            or (GetClassInfo and select(2, GetClassInfo(classFile)))
-            or classFile
-    end
-
-    local colorTable = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
-    local classColor = colorTable and classFile and colorTable[classFile]
-    if not classColor or not text or text == "" then
-        return text
-    end
-
-    if classColor.colorStr and classColor.colorStr ~= "" then
-        return "|c" .. classColor.colorStr .. text .. "|r"
-    end
-
-    if classColor.r and classColor.g and classColor.b then
-        return string.format(
-            "|cff%02x%02x%02x%s|r",
-            math.floor(classColor.r * 255),
-            math.floor(classColor.g * 255),
-            math.floor(classColor.b * 255),
-            text
-        )
-    end
-
-    return text
-end
-
-local function NormalizeClassFile(classFile)
-    if type(classFile) == "string" then
-        if classFile ~= "" then
-            return classFile
-        end
-
-        return nil
-    end
-
-    if type(classFile) ~= "number" then
-        return nil
-    end
-
-    local classInfo = C_CreatureInfo and C_CreatureInfo.GetClassInfo and C_CreatureInfo.GetClassInfo(classFile)
-    if classInfo and classInfo.classFile and classInfo.classFile ~= "" then
-        return classInfo.classFile
-    end
-
-    if GetClassInfo then
-        local _, normalizedClassFile = GetClassInfo(classFile)
-        if normalizedClassFile and normalizedClassFile ~= "" then
-            return normalizedClassFile
-        end
-    end
-
-    return nil
-end
-
-local function NormalizeSimcCharacter(character)
-    if type(character) ~= "table" then
-        return nil
-    end
-
-    local normalizedClassFile = NormalizeClassFile(character.classFile)
-    if normalizedClassFile then
-        character.classFile = normalizedClassFile
-    end
-
-    return character
-end
-
-local function EnsureSimcStorage()
+local function EnsureSavedVariables()
     if type(APRaidUtilsDB) ~= "table" then
         APRaidUtilsDB = {}
     end
@@ -147,25 +30,10 @@ local function EnsureSimcStorage()
     if type(APRaidUtilsDB.global.breaktimer) ~= "table" then
         APRaidUtilsDB.global.breaktimer = {}
     end
-
-    if type(APRaidUtilsDB.global.simc) ~= "table" then
-        APRaidUtilsDB.global.simc = {}
-    end
-
-    local simc = APRaidUtilsDB.global.simc
-    if type(simc.characters) ~= "table" then
-        simc.characters = {}
-    end
-
-    if type(simc.exports) ~= "table" then
-        simc.exports = {}
-    end
-
-    return simc
 end
 
 local function InitializeSavedVariables()
-    EnsureSimcStorage()
+    EnsureSavedVariables()
 end
 
 function AP:Print(...)
@@ -174,15 +42,6 @@ end
 
 function AP:OnAddonLoaded()
     InitializeSavedVariables()
-    self:CleanupSimcData()
-
-    if self.LeadPassReminder and self.LeadPassReminder.OnAddonLoaded then
-        self.LeadPassReminder:OnAddonLoaded()
-    end
-
-    if self.BreakTimer and self.BreakTimer.OnAddonLoaded then
-        self.BreakTimer:OnAddonLoaded()
-    end
 
     if not IsDevVersion and AP.Comms then
         AP.Comms:RegisterCallback("CHECK_UPDATE", function(event, sender, distribution, data)
@@ -198,12 +57,17 @@ function AP:OnAddonLoaded()
 end
 
 function AP:OnPlayerLogin()
-    self:CleanupSimcData()
-    self:RegisterCurrentCharacter()
     self:NotifyOptionsChanged()
 
-    if self.BreakTimer and self.BreakTimer.OnPlayerLogin then
-        self.BreakTimer:OnPlayerLogin()
+    -- Re-enable any feature the user previously opted into. Features build
+    -- lazily and register their events only once enabled, so nothing runs for
+    -- features that were left off.
+    if self.LeadPassReminder and self.LeadPassReminder.Restore then
+        self.LeadPassReminder:Restore()
+    end
+
+    if self.BreakTimer and self.BreakTimer.Restore then
+        self.BreakTimer:Restore()
     end
 
     if IsInGuild() and not IsDevVersion then
@@ -216,339 +80,13 @@ end
 
 function AP:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
     if isInitialLogin or isReloadingUi then
-        self:CleanupSimcData()
-        self:RegisterCurrentCharacter()
         self:NotifyOptionsChanged()
     end
 end
 
-function AP:GetEffectiveMaxLevel()
-    if GameRulesUtil and GameRulesUtil.GetEffectiveMaxLevelForPlayer then
-        return GameRulesUtil.GetEffectiveMaxLevelForPlayer()
-    end
-
-    if GetMaxPlayerLevel then
-        return GetMaxPlayerLevel()
-    end
-
-    if GetMaxLevelForPlayerExpansion then
-        return GetMaxLevelForPlayerExpansion()
-    end
-
-    return 0
-end
-
-function AP:IsMaxLevel(level)
-    local maxLevel = self:GetEffectiveMaxLevel()
-    if maxLevel <= 0 then
-        return false
-    end
-
-    return (level or 0) >= maxLevel
-end
-
-function AP:GetCharacterKey(name, realm)
-    if not name or name == "" then
-        return nil
-    end
-
-    local characterRealm = NormalizeRealmForKey(realm or GetNormalizedRealmNameSafe())
-    if not characterRealm or characterRealm == "" then
-        return name
-    end
-
-    return name .. "-" .. characterRealm
-end
-
-function AP:GetCharacterNameText(character)
-    if not character or not character.name then
-        return ""
-    end
-
-    if character.realm and character.realm ~= "" then
-        return character.name .. "-" .. character.realm
-    end
-
-    return character.name
-end
-
-function AP:GetCharacterDisplayName(character)
-    NormalizeSimcCharacter(character)
-    return WrapTextInClassColor(character and character.classFile, self:GetCharacterNameText(character))
-end
-
-function AP:GetCharacterClassText(character)
-    local normalizedCharacter = NormalizeSimcCharacter(character)
-    if not normalizedCharacter or not normalizedCharacter.classFile then
-        return ""
-    end
-
-    return LOCALIZED_CLASS_NAMES_MALE[normalizedCharacter.classFile]
-        or LOCALIZED_CLASS_NAMES_FEMALE[normalizedCharacter.classFile]
-        or normalizedCharacter.classFile
-end
-
-function AP:GetCharacterSpecializationText(character, specName)
-    local specialization = specName or (character and character.specName)
-    if not specialization or specialization == "" then
-        return ""
-    end
-
-    local classText = self:GetCharacterClassText(character)
-    if classText ~= "" then
-        return specialization .. " - " .. classText
-    end
-
-    return specialization
-end
-
-function AP:GetPlayerCharacterInfo()
-    local name = UnitName("player")
-    local realm = GetRealmName() or ""
-    local normalizedRealm = GetNormalizedRealmNameSafe()
-    local level = UnitLevel("player") or 0
-    local _, classFile = UnitClassBase("player")
-    classFile = NormalizeClassFile(classFile) or classFile
-
-    local specIndex = nil
-    if C_SpecializationInfo and C_SpecializationInfo.GetSpecialization then
-        specIndex = C_SpecializationInfo.GetSpecialization()
-    elseif GetSpecialization then
-        specIndex = GetSpecialization()
-    end
-
-    local specName = nil
-    if specIndex and C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo then
-        local _, localizedSpecName = C_SpecializationInfo.GetSpecializationInfo(specIndex)
-        specName = localizedSpecName
-    end
-
-    return {
-        key = self:GetCharacterKey(name, normalizedRealm),
-        name = name,
-        realm = realm,
-        normalizedRealm = normalizedRealm,
-        level = level,
-        classFile = classFile,
-        specName = specName,
-        isMaxLevel = self:IsMaxLevel(level),
-    }
-end
-
-function AP:GetSimcStorage()
-    return EnsureSimcStorage()
-end
-
-function AP:IsSimcExportValid(exportText)
-    if not exportText or exportText == "" then
-        return false
-    end
-
-    local specialization = GetSimcLineValue(exportText, "spec=")
-    if not specialization or specialization == "" or specialization == "unknown" then
-        return false
-    end
-
-    local role = GetSimcLineValue(exportText, "role=")
-    if not role or role == "" then
-        return false
-    end
-
-    local lootSpec = GetSimcLineValue(exportText, "# loot_spec=")
-    if not lootSpec or lootSpec == "" then
-        return false
-    end
-
-    if not exportText:find("\ntalents=", 1, true) and not exportText:find("^talents=", 1, true) then
-        return false
-    end
-
-    for _, slotName in ipairs(simcRequiredEquipmentSlots) do
-        if exportText:find("\n" .. slotName .. "=", 1, true) or exportText:find("^" .. slotName .. "=") then
-            return true
-        end
-    end
-
-    return false
-end
-
-function AP:CleanupSimcData()
-    if self._simcCleanupDone then
-        return
-    end
-    self._simcCleanupDone = true
-
-    local simc = self:GetSimcStorage()
-    local maxLevel = self:GetEffectiveMaxLevel()
-
-    for characterKey, character in pairs(simc.characters) do
-        NormalizeSimcCharacter(character)
-
-        local characterLevel = type(character) == "table" and tonumber(character.level) or nil
-
-        if
-            type(character) ~= "table"
-            or type(character.name) ~= "string"
-            or character.name == ""
-            or (characterLevel or 0) < maxLevel
-        then
-            simc.characters[characterKey] = nil
-            simc.exports[characterKey] = nil
-        end
-    end
-
-    for characterKey, exportData in pairs(simc.exports) do
-        if
-            not simc.characters[characterKey]
-            or type(exportData) ~= "table"
-            or type(exportData.text) ~= "string"
-            or exportData.text == ""
-        then
-            simc.exports[characterKey] = nil
-        end
-    end
-end
-
-function AP:RegisterCurrentCharacter()
-    local characterInfo = self:GetPlayerCharacterInfo()
-    if not characterInfo or not characterInfo.key then
-        return nil
-    end
-
-    local simc = self:GetSimcStorage()
-    if not characterInfo.isMaxLevel then
-        simc.characters[characterInfo.key] = nil
-        simc.exports[characterInfo.key] = nil
-        return characterInfo
-    end
-
-    local existing = simc.characters[characterInfo.key] or {}
-    local classFile = NormalizeClassFile(characterInfo.classFile)
-        or NormalizeClassFile(existing.classFile)
-        or characterInfo.classFile
-        or existing.classFile
-    simc.characters[characterInfo.key] = {
-        name = characterInfo.name,
-        realm = characterInfo.realm,
-        classFile = classFile,
-        specName = characterInfo.specName,
-        level = characterInfo.level,
-        enabled = existing.enabled == true,
-        lastSeen = time(),
-    }
-
-    return characterInfo
-end
-
-function AP:GetSimcCharacter(characterKey)
-    return NormalizeSimcCharacter(self:GetSimcStorage().characters[characterKey])
-end
-
-function AP:GetSimcCharacters()
-    local characters = {}
-    for characterKey, character in pairs(self:GetSimcStorage().characters) do
-        NormalizeSimcCharacter(character)
-
-        characters[#characters + 1] = {
-            key = characterKey,
-            name = character.name,
-            realm = character.realm,
-            classFile = character.classFile,
-            specName = character.specName,
-            level = character.level,
-            enabled = character.enabled == true,
-            lastSeen = character.lastSeen,
-        }
-    end
-
-    table.sort(characters, function(left, right)
-        return self:GetCharacterNameText(left) < self:GetCharacterNameText(right)
-    end)
-
-    return characters
-end
-
-function AP:GetSimcExport(characterKey)
-    return self:GetSimcStorage().exports[characterKey]
-end
-
-function AP:GetSimcExportCharacters()
-    local characters = {}
-    local simc = self:GetSimcStorage()
-    for _, character in ipairs(self:GetSimcCharacters()) do
-        local exportData = simc.exports[character.key]
-        if exportData and exportData.text and exportData.text ~= "" then
-            characters[#characters + 1] = character
-        end
-    end
-
-    return characters
-end
-
-function AP:IsSimcCharacterEnabled(characterKey)
-    local character = self:GetSimcCharacter(characterKey)
-    return character and character.enabled == true or false
-end
-
-function AP:SetSimcCharacterEnabled(characterKey, enabled)
-    local character = self:GetSimcCharacter(characterKey)
-    if not character then
-        return
-    end
-
-    character.enabled = enabled == true
-    self:NotifyOptionsChanged()
-end
-
-function AP:SaveSimcExport(characterInfo, exportText)
-    if not characterInfo or not characterInfo.key or not exportText or exportText == "" then
-        return false
-    end
-
-    local simc = self:GetSimcStorage()
-    local character = simc.characters[characterInfo.key]
-    if not character then
-        return false
-    end
-
-    if not self:IsSimcExportValid(exportText) then
-        return false
-    end
-
-    local updatedAt = time()
-    local normalizedClassFile = NormalizeClassFile(characterInfo.classFile)
-        or NormalizeClassFile(character.classFile)
-        or characterInfo.classFile
-        or character.classFile
-    character.name = characterInfo.name
-    character.realm = characterInfo.realm
-    character.classFile = normalizedClassFile
-    character.specName = characterInfo.specName
-    character.level = characterInfo.level
-    character.lastSeen = updatedAt
-
-    simc.exports[characterInfo.key] = {
-        text = exportText,
-        updatedAt = updatedAt,
-        level = characterInfo.level,
-        specName = characterInfo.specName,
-    }
-
-    self:NotifyOptionsChanged()
-    return true
-end
-
 function AP:NotifyOptionsChanged()
-    if self.RefreshSimcTab then
-        self:RefreshSimcTab()
-    end
-
     if self.RefreshSettingsTab then
         self:RefreshSettingsTab()
-    end
-
-    if self.RefreshRemindersTab then
-        self:RefreshRemindersTab()
     end
 end
 
@@ -580,30 +118,7 @@ function AP:IsVersionNewer(their, mine)
     return false
 end
 
-function AP:ShowReloadDialog(options)
-    if not options or not options.text then
-        return
-    end
-
-    local popup = StaticPopup_Show("AP_RELOAD_DIALOG")
-    if popup then
-        popup.text:SetText(options.text)
-    end
-end
-
 SlashCmdList["APRAIDUTILS"] = function(msg)
     AP:HandleChatCommand(msg)
 end
 SLASH_APRAIDUTILS1 = "/ap"
-
-StaticPopupDialogs["AP_RELOAD_DIALOG"] = {
-    text = "%s",
-    button1 = "Reload UI",
-    button2 = "Later",
-    OnAccept = function()
-        ReloadUI()
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-}

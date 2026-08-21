@@ -1,10 +1,9 @@
-## Interface: 110207, 120000, 120001
+## Interface: 120100
 
 ## Title: Average Pillagers Raid Utility
 ## Version: @project-version@
 ## Author: Dispy
 ## DefaultState: Enabled
-## OptionalDeps: Simulationcraft
 ## SavedVariables: APRaidUtilsDB
 ## X-Curse-Project-ID: 1342273
 
@@ -15,15 +14,9 @@ eventHandler.lua
 comms.lua
 rosterManager.lua
 leadpass.lua
-housingRoll.lua
 breaktimer.lua
 settings\registry.lua
 settings\renderers\df.lua
-simcExport\main.lua
-simcExport\ui.lua
-reminders\main.lua
-reminders\aurabuilder.lua
-reminders\ui.lua
 versionChecker\main.lua
 versionChecker\client.lua
 versionChecker\server.lua
