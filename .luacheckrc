@@ -49,6 +49,7 @@ read_globals = {
     "GetRaidDifficultyID",
     "GetRaidRosterInfo",
     "GetRealmName",
+    "InCombatLockdown",
     "GetRealZoneText",
     "GetSpellInfo",
     "GetSpellTexture",
@@ -88,4 +89,5 @@ read_globals = {
     "UnitLevel",
     "UnitName",
     "VMRT",
+    "wipe",
 }

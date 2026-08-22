@@ -33,6 +33,7 @@ APRaidUtils/
 |- rosterManager.lua        # roster parsing, invite, move helpers
 |- leadpass.lua             # Mythic lead-pass reminder (lazy opt-in feature)
 |- breaktimer.lua           # break timer anchor (lazy opt-in feature)
+|- sszorak.lua              # Sszorak caller helper octagon (lazy opt-in feature)
 |- settings/                # settings registry DSL + DF renderer
 |- versionChecker/          # group version request/reply flow
 |- ui/                      # main window, tabs, and anchor editor subsystem

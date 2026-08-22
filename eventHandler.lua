@@ -16,6 +16,7 @@ end)
 local featureEvents = {
     leadpass = { "GROUP_ROSTER_UPDATE" },
     breaktimer = { "CHAT_MSG_ADDON", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" },
+    sszorak = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ENCOUNTER_START", "ENCOUNTER_END" },
 }
 
 local activeFeatures = {}
@@ -76,13 +77,29 @@ function AP:HandleEvent(event, ...)
         if self.BreakTimer and self.BreakTimer.OnChatMsgAddon then
             self.BreakTimer:OnChatMsgAddon(...)
         end
+    elseif event == "ENCOUNTER_START" then
+        -- Only reachable while sszorak is enabled (event is gated).
+        if self.Sszorak and self.Sszorak.OnEncounterStart then
+            self.Sszorak:OnEncounterStart(...)
+        end
+    elseif event == "ENCOUNTER_END" then
+        -- Only reachable while sszorak is enabled (event is gated).
+        if self.Sszorak and self.Sszorak.OnEncounterEnd then
+            self.Sszorak:OnEncounterEnd()
+        end
     elseif event == "PLAYER_REGEN_DISABLED" then
         if self.BreakTimer and self.BreakTimer.OnPlayerRegenDisabled then
             self.BreakTimer:OnPlayerRegenDisabled()
         end
+        if self.Sszorak and self.Sszorak.OnPlayerRegenDisabled then
+            self.Sszorak:OnPlayerRegenDisabled()
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if self.BreakTimer and self.BreakTimer.OnPlayerRegenEnabled then
             self.BreakTimer:OnPlayerRegenEnabled()
+        end
+        if self.Sszorak and self.Sszorak.OnPlayerRegenEnabled then
+            self.Sszorak:OnPlayerRegenEnabled()
         end
     end
 end

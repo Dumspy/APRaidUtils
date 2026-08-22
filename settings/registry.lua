@@ -131,6 +131,44 @@ local function GetSections()
                 },
             },
         },
+        {
+            id = "sszorak",
+            type = "group",
+            name = "Sszorak Caller Helper",
+            order = 4,
+            items = {
+                {
+                    id = "sszorakEnabled",
+                    type = "toggle",
+                    name = "Enable Sszorak Caller Helper",
+                    desc = "Show the octagon directional helper. Right-click a direction out of combat to assign its world marker; left-click up to three directions to queue calls - the bar below shows the opposite markers in call order.",
+                    get = function()
+                        local module = AP.Sszorak
+                        return module and module:IsEnabled() or false
+                    end,
+                    set = function(value)
+                        local module = AP.Sszorak
+                        if module then
+                            module:SetEnabled(value)
+                        end
+                    end,
+                    order = 1,
+                },
+                {
+                    id = "sszorakToggleConfig",
+                    type = "execute",
+                    name = "Toggle Marker Config",
+                    desc = "Show or hide the octagon out of combat so you can assign world markers. It also appears automatically inside the Sszorak encounter and during anchor edit mode.",
+                    func = function()
+                        local module = AP.Sszorak
+                        if module then
+                            module:ToggleConfig()
+                        end
+                    end,
+                    order = 2,
+                },
+            },
+        },
     }
 end
 

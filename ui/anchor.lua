@@ -9,6 +9,8 @@ local SharedMedia = LibStub("LibSharedMedia-3.0")
 local anchors = {}
 local anchorFrames = {}
 local rightClickMenus = {}
+local visibilityHooks = {}
+local contentAnchors = {}
 local allAnchorsVisible = false
 
 local function MigrateFont(font)
@@ -343,7 +345,29 @@ local function BuildSettingsPanel(frame, key)
     end)
 
     local yOffset = -10
+    local isContent = contentAnchors[key] == true
 
+    if isContent then
+        panel:SetHeight(170)
+    end
+
+    -- Scale applies to every anchor type.
+    local scaleLabel = DF:CreateLabel(panel, "Scale", 10, "orange")
+    scaleLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+    yOffset = yOffset - 18
+
+    local scaleSlider =
+        DF:CreateSlider(panel, 240, 16, 0.5, 2.0, 0.05, settings.scale or 1.0, true, nil, "$parentScaleSlider", "Scale:")
+    scaleSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
+    scaleSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+    scaleSlider:SetValue(settings.scale or 1.0)
+    scaleSlider:SetValueChangedFunction(function(self)
+        SaveAnchorSetting(key, "scale", self:GetValue())
+        ApplySettingsToFrame(frame, GetMergedSettings(key, frame.UserDefaults))
+    end)
+    yOffset = yOffset - 40
+
+    if not isContent then
     local sizeLabel = DF:CreateLabel(panel, "Text Size", 10, "orange")
     sizeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
@@ -523,6 +547,7 @@ local function BuildSettingsPanel(frame, key)
     outlineLabel:SetText("Text Outline")
     outlineLabel:SetTextColor(0.9, 0.9, 0.9, 1)
     yOffset = yOffset - 30
+    end -- not isContent
 
     local lockSwitch = DF:CreateSwitch(panel, function(_, _, value)
         SaveAnchorSetting(key, "locked", value)
@@ -560,11 +585,9 @@ local function BuildSettingsPanel(frame, key)
     return panel
 end
 
-local function CreateAnchorFrame(key, userDefaults)
-    if anchorFrames[key] then
-        return anchorFrames[key]
-    end
-
+-- Creates the shared anchor chrome (backdrop, drag handlers, edit-state UI,
+-- persistence hooks) without any content. Callers decorate via FinishAnchor.
+local function CreateAnchorShell(key, userDefaults)
     local settings = GetMergedSettings(key, userDefaults)
 
     local frame = CreateFrame("Frame", "APRaidUtilsAnchor_" .. key, UIParent, "BackdropTemplate")
@@ -583,23 +606,6 @@ local function CreateAnchorFrame(key, userDefaults)
     })
     frame:SetBackdropColor(0, 0, 0, 0)
     frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
-
-    local text = DF:CreateLabel(
-        frame,
-        settings.text or "",
-        math.min(settings.fontSize or 14, 72),
-        { settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0 },
-        DEFAULT_LABEL_FONT_OBJECT,
-        "Text",
-        "$parentText",
-        "OVERLAY"
-    )
-    text:SetPoint("CENTER", frame, "CENTER", 0, 0)
-    text:SetJustifyH("CENTER")
-    text:SetJustifyV("MIDDLE")
-    text:SetWidth((settings.maxWidth or 300) - 10)
-    text:SetWordWrap(true)
-    frame.Text = text
 
     local unlockOverlay = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     unlockOverlay:SetPoint("BOTTOM", frame, "BOTTOM", 0, -12)
@@ -685,10 +691,45 @@ local function CreateAnchorFrame(key, userDefaults)
         RefreshAnchorFrameVisibility(frame)
     end)
 
-    ApplySettingsToFrame(frame, settings)
+    return frame, settings
+end
 
+local function FinishAnchor(key, userDefaults, decorate)
+    local frame, settings = CreateAnchorShell(key, userDefaults)
+
+    if decorate then
+        decorate(frame, settings)
+    end
+
+    ApplySettingsToFrame(frame, settings)
     anchorFrames[key] = frame
     return frame
+end
+
+local function CreateTextAnchorFrame(key, userDefaults)
+    return FinishAnchor(key, userDefaults, function(frame, settings)
+        local text = DF:CreateLabel(
+            frame,
+            settings.text or "",
+            math.min(settings.fontSize or 14, 72),
+            { settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0, settings.opacity or 1.0 },
+            DEFAULT_LABEL_FONT_OBJECT,
+            "Text",
+            "$parentText",
+            "OVERLAY"
+        )
+        text:SetPoint("CENTER", frame, "CENTER", 0, 0)
+        text:SetJustifyH("CENTER")
+        text:SetJustifyV("MIDDLE")
+        text:SetWidth((settings.maxWidth or 300) - 10)
+        text:SetWordWrap(true)
+        frame.Text = text
+    end)
+end
+
+local function CreateContentAnchorFrame(key, userDefaults, buildContent)
+    contentAnchors[key] = true
+    return FinishAnchor(key, userDefaults, buildContent)
 end
 
 function APAnchor:CreateAnchor(key, userDefaults)
@@ -698,10 +739,30 @@ function APAnchor:CreateAnchor(key, userDefaults)
 
     anchors[key] = true
 
-    local frame = CreateAnchorFrame(key, userDefaults)
+    local frame = CreateTextAnchorFrame(key, userDefaults)
     RefreshAnchorFrameVisibility(frame)
 
     return frame
+end
+
+---Create an anchor whose content is owned by the caller (no text label).
+---buildContent(frame, settings) must populate the frame and set its size.
+---Content anchors get a trimmed settings panel (scale/lock) on right-click.
+function APAnchor:CreateContentAnchor(key, userDefaults, buildContent)
+    if anchors[key] then
+        return anchorFrames[key]
+    end
+
+    anchors[key] = true
+
+    local frame = CreateContentAnchorFrame(key, userDefaults, buildContent)
+    RefreshAnchorFrameVisibility(frame)
+
+    return frame
+end
+
+function APAnchor:IsContentAnchor(key)
+    return contentAnchors[key] == true
 end
 
 function APAnchor:GetAnchorData(key)
@@ -738,6 +799,9 @@ function APAnchor:ShowAllAnchors()
             RefreshAnchorFrameVisibility(frame)
         end
     end
+    for _, hookFunc in pairs(visibilityHooks) do
+        hookFunc(true)
+    end
 end
 
 function APAnchor:HideAllAnchors()
@@ -748,6 +812,9 @@ function APAnchor:HideAllAnchors()
             frame.APTemporaryHidden = false
             RefreshAnchorFrameVisibility(frame)
         end
+    end
+    for _, hookFunc in pairs(visibilityHooks) do
+        hookFunc(false)
     end
 end
 
@@ -766,6 +833,12 @@ end
 
 function APAnchor:RegisterRightClickMenu(key, buildMenuFunc)
     rightClickMenus[key] = buildMenuFunc
+end
+
+---Register a callback fired whenever anchor edit-mode toggles.
+---Lets non-anchor widgets (e.g. Sszorak) join the shared move/style flow.
+function APAnchor:RegisterVisibilityHook(key, func)
+    visibilityHooks[key] = func
 end
 
 AP.APAnchor = APAnchor
