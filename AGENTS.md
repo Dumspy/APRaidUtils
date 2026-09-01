@@ -34,6 +34,7 @@ APRaidUtils/
 |- leadpass.lua             # Mythic lead-pass reminder (lazy opt-in feature)
 |- breaktimer.lua           # break timer anchor (lazy opt-in feature)
 |- sszorak.lua              # Sszorak caller helper octagon (lazy opt-in feature)
+|- readycheck.lua           # ready check popup with buff columns (lazy opt-in feature)
 |- settings/                # settings registry DSL + DF renderer
 |- versionChecker/          # group version request/reply flow
 |- ui/                      # main window, tabs, and anchor editor subsystem
@@ -48,6 +49,7 @@ APRaidUtils/
 | Startup and load order | `APRaidUtils.toc`, `main.lua`, `eventHandler.lua` | Namespace bootstrap first, then central event dispatch |
 | Add or change comm traffic | `comms.lua` plus consumer module | Serialized `{ event, data }`, group validation, 5 messages / 2 seconds |
 | Gate a feature's events on/off | `eventHandler.lua` | `featureEvents` map + `AP:EnableFeatureEvents()` / `AP:DisableFeatureEvents()` |
+| Add or change the ready check popup | `readycheck.lua` | `READY_CHECK`-driven popup; buff columns match aura names (tables at top of file); custom spell IDs via settings |
 | Change shared window / tabs / anchors | `ui/main.lua`, `ui/anchor.lua` | See UI guide below |
 | Change settings surface | `settings/registry.lua`, `settings/renderers/df.lua` | See Settings guide below |
 | Change group version checks | `versionChecker/` modules | See Version checker guide below |
@@ -190,6 +192,8 @@ This repo uses repo-owned Lua tooling for consistent editor/AI support.
 ## NOTES
 
 - No local build or test runner is defined in this repo; verification is manual in-game.
+- `libs/LibDFramework-1.0` is the standalone packaging of upstream `Tercioo/Details-Framework` (vendored wholesale minus `*.md` docs); the version is `dversion` at the top of `fw.lua` (currently 753, Interface 120100). Other libs (AceComm, AceSerializer, CallbackHandler-1.0, LibSharedMedia-3.0, LibStub) are current against upstream and frozen.
+- The ready check popup (`readycheck.lua`) reuses DF `CreateSimplePanel` + scrollbox styled like the Versions tab in `ui/main.lua`.
 - `.github/workflows/bump-release.yml` computes semver tags; `.github/workflows/build-release.yml` packages tagged refs with `BigWigsMods/packager`.
 - `libs/` contains retained-but-unloaded Ace directories plus vendor tests/examples; tree size overstates first-party complexity.
 - This single AGENTS.md is the source of truth; there are no child knowledge files.

@@ -8,6 +8,10 @@ local function GetBreakTimerModule()
     return AP.BreakTimer
 end
 
+local function GetReadyCheckModule()
+    return AP.ReadyCheck
+end
+
 local function ToggleAllAnchors()
     if AP.APAnchor then
         AP.APAnchor:ToggleAllAnchors()
@@ -132,10 +136,61 @@ local function GetSections()
             },
         },
         {
+            id = "readycheck",
+            type = "group",
+            name = "Ready Check",
+            order = 4,
+            items = {
+                {
+                    id = "readycheckEnabled",
+                    type = "toggle",
+                    name = "Enable Ready Check UI",
+                    desc = "Pop up a panel during ready checks showing every raider's food, flask, Vantus rune, augment rune and raid buff status. The raid counts as ready when everyone in groups 1-4 (Mythic) or 1-6 (other difficulties) confirms; the result is printed to chat.",
+                    get = function()
+                        local module = GetReadyCheckModule()
+                        return module and module:IsEnabled() or false
+                    end,
+                    set = function(value)
+                        local module = GetReadyCheckModule()
+                        if module then
+                            module:SetEnabled(value)
+                        end
+                    end,
+                    order = 1,
+                },
+                {
+                    id = "readycheckCustomBuffIds",
+                    type = "input",
+                    name = "Custom Buff Spell IDs",
+                    desc = "Comma or space separated spell IDs to check as an extra column on the ready check panel, e.g. 444257, 451366.",
+                    get = function()
+                        local module = GetReadyCheckModule()
+                        return module and module:GetCustomBuffIds() or ""
+                    end,
+                    set = function(value)
+                        local module = GetReadyCheckModule()
+                        if module then
+                            module:SetCustomBuffIds(value)
+                        end
+                    end,
+                    order = 2,
+                    df = {
+                        width = 200,
+                    },
+                },
+                {
+                    id = "readycheckInfo",
+                    type = "description",
+                    text = "Raiders outside the counted groups (5-8 on Mythic) are shown greyed under a divider at the bottom of the panel. Hover a row for details on which buffs matched.",
+                    order = 3,
+                },
+            },
+        },
+        {
             id = "sszorak",
             type = "group",
             name = "Sszorak Caller Helper",
-            order = 4,
+            order = 5,
             items = {
                 {
                     id = "sszorakEnabled",

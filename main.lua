@@ -30,6 +30,10 @@ local function EnsureSavedVariables()
     if type(APRaidUtilsDB.global.breaktimer) ~= "table" then
         APRaidUtilsDB.global.breaktimer = {}
     end
+
+    if type(APRaidUtilsDB.profile.readycheck) ~= "table" then
+        APRaidUtilsDB.profile.readycheck = {}
+    end
 end
 
 local function InitializeSavedVariables()
@@ -68,6 +72,14 @@ function AP:OnPlayerLogin()
 
     if self.BreakTimer and self.BreakTimer.Restore then
         self.BreakTimer:Restore()
+    end
+
+    if self.Sszorak and self.Sszorak.Restore then
+        self.Sszorak:Restore()
+    end
+
+    if self.ReadyCheck and self.ReadyCheck.Restore then
+        self.ReadyCheck:Restore()
     end
 
     if IsInGuild() and not IsDevVersion then

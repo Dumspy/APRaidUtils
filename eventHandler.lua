@@ -17,6 +17,7 @@ local featureEvents = {
     leadpass = { "GROUP_ROSTER_UPDATE" },
     breaktimer = { "CHAT_MSG_ADDON", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" },
     sszorak = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ENCOUNTER_START", "ENCOUNTER_END" },
+    readycheck = { "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED", "UNIT_AURA", "GROUP_ROSTER_UPDATE" },
 }
 
 local activeFeatures = {}
@@ -68,9 +69,33 @@ function AP:HandleEvent(event, ...)
         local isInitialLogin, isReloadingUi = ...
         self:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
     elseif event == "GROUP_ROSTER_UPDATE" then
-        -- Only reachable while leadpass is enabled (event is gated).
+        -- Only reachable while leadpass or readycheck is enabled (event is gated).
         if self.LeadPassReminder and self.LeadPassReminder.CheckConditions then
             self.LeadPassReminder:CheckConditions()
+        end
+        if self.ReadyCheck and self.ReadyCheck.OnRosterUpdate then
+            self.ReadyCheck:OnRosterUpdate()
+        end
+    elseif event == "READY_CHECK" then
+        -- Only reachable while readycheck is enabled (event is gated).
+        if self.ReadyCheck and self.ReadyCheck.OnReadyCheck then
+            self.ReadyCheck:OnReadyCheck(...)
+        end
+    elseif event == "READY_CHECK_CONFIRM" then
+        -- Only reachable while readycheck is enabled (event is gated).
+        if self.ReadyCheck and self.ReadyCheck.OnReadyCheckConfirm then
+            self.ReadyCheck:OnReadyCheckConfirm(...)
+        end
+    elseif event == "READY_CHECK_FINISHED" then
+        -- Only reachable while readycheck is enabled (event is gated).
+        if self.ReadyCheck and self.ReadyCheck.OnReadyCheckFinished then
+            self.ReadyCheck:OnReadyCheckFinished(...)
+        end
+    elseif event == "UNIT_AURA" then
+        -- Only reachable while readycheck is enabled (event is gated); the
+        -- handler itself early-outs unless a ready check is in progress.
+        if self.ReadyCheck and self.ReadyCheck.OnUnitAura then
+            self.ReadyCheck:OnUnitAura(...)
         end
     elseif event == "CHAT_MSG_ADDON" then
         -- Only reachable while breaktimer is enabled (event is gated).

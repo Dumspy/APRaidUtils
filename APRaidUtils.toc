@@ -16,6 +16,7 @@ rosterManager.lua
 leadpass.lua
 breaktimer.lua
 sszorak.lua
+readycheck.lua
 settings\registry.lua
 settings\renderers\df.lua
 versionChecker\main.lua
