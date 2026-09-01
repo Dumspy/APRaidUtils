@@ -67,7 +67,7 @@ end
 
 local lazyLoadAllSpells = function(payload, iterationCount, maxIterations)
 	local startPoint = payload.nextIndex
-	--the goal is iterate over 500000 spell ids over 200 frames
+	--the goal is iterate over 1500000 spell ids over 600 frames
 	local endPoint = startPoint + 2500
 	payload.nextIndex = endPoint
 	local i = startPoint + 1
@@ -122,7 +122,7 @@ function DF:LoadSpellCache(hashMap, indexTable, allSpellsSameName)
 	spellsIndexTable = indexTable
 	spellsWithSameName = allSpellsSameName
 
-	local iterations = 200
+	local iterations = 600
 	local payload = {
 		nextIndex = 0,
 		hashMap = hashMap,
@@ -873,6 +873,7 @@ function DF:CreateAuraConfigPanel(parent, name, db, changeCallback, options, tex
 				end
 			end
 		end
+		DF:QuickDispatch(changeCallback)
 	end
 
 	local buffs_added = self:CreateScrollBox(auraPanel_Manual, "$parentBuffsAdded", scroll_refresh, newAuraPanel.db.aura_tracker.buff, scroll_width, scroll_height, scroll_lines, scroll_line_height)
