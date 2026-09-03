@@ -3,6 +3,8 @@ local AP = _G["APRaidUtils"]
 local mainWindow
 local mainTabs
 local rosterInputEditor
+local bossTeamDropdown
+local selectedRosterSetId -- pending dropdown choice (runtime only)
 local rosterStatusLabel
 local rosterPreviewScrollBox
 local versionsTab
@@ -213,7 +215,7 @@ end
 
 local function SetDefaultRosterPreviewRows(text)
     SetRosterPreviewRows({
-        { text = "  " .. (text or "Paste a roster and click Preview to see invites and moves."), kind = "success" },
+        { text = "  " .. (text or "Pick a saved boss team to preview invites and moves."), kind = "success" },
     })
 end
 
@@ -262,7 +264,7 @@ local function UpdateRosterPreview(updateStatus)
 
     local preview, errorMessage = rosterManager:GetRosterPreview(GetRosterInputText())
     if not preview then
-        SetDefaultRosterPreviewRows("Preview will appear here after you paste a roster.")
+        SetDefaultRosterPreviewRows("Preview will appear here after you pick a saved boss team.")
         if updateStatus then
             SetRosterStatus(errorMessage or "Error: No roster provided", 1, 0, 0)
         end
@@ -403,7 +405,127 @@ local function RequestVersionCheckFromTab()
 end
 local function BuildRosterTab(framework, parent)
     local anchor = CreateBodyAnchor(parent)
-    local inputLabel = CreateSectionLabel(parent, anchor, "Roster String")
+
+    -- Saved boss teams: imported from multi-boss exports (EncounterID blocks)
+    -- and persisted in APRaidUtilsDB.profile.rosterSets across sessions. The
+    -- dropdown only picks a team; the Load Team button activates it.
+    local teamsLabel = CreateSectionLabel(parent, anchor, "Saved Boss Teams")
+
+    local rosterManager = GetRosterManager()
+    local activeSet = rosterManager and rosterManager.GetActiveRosterSet and rosterManager:GetActiveRosterSet()
+    selectedRosterSetId = activeSet and activeSet.encounterId or nil
+
+    bossTeamDropdown = framework:CreateDropDown(
+        parent,
+        function()
+            local saved = rosterManager and rosterManager.GetSavedRosterSets and rosterManager:GetSavedRosterSets()
+                or {}
+
+            if #saved == 0 then
+                return {
+                    {
+                        value = "empty",
+                        label = "No saved teams - paste an export and click Import",
+                        color = { 0.6, 0.6, 0.6, 1 },
+                    },
+                }
+            end
+
+            local options = {}
+            for _, set in ipairs(saved) do
+                local encounterId = set.encounterId
+                options[#options + 1] = {
+                    value = encounterId,
+                    label = string.format("%s (%s)", set.name, set.difficulty),
+                    selected = encounterId == selectedRosterSetId,
+                    onclick = function()
+                        selectedRosterSetId = encounterId
+                    end,
+                }
+            end
+            return options
+        end,
+        selectedRosterSetId,
+        300,
+        20,
+        nil,
+        "$parentBossTeamDropdown",
+        framework:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE")
+    )
+    bossTeamDropdown:SetPoint("TOPLEFT", teamsLabel, "BOTTOMLEFT", 0, -6)
+
+    local loadTeamButton = framework:CreateButton(parent, function()
+        local currentManager = GetRosterManager()
+        if not currentManager then
+            AP:Print("Roster manager is unavailable.")
+            return
+        end
+
+        if not selectedRosterSetId then
+            SetRosterStatus("Pick a team in the dropdown first.", 1, 0.82, 0)
+            return
+        end
+
+        for _, set in ipairs(currentManager:GetSavedRosterSets()) do
+            if set.encounterId == selectedRosterSetId then
+                if currentManager.SetActiveRosterSet then
+                    currentManager:SetActiveRosterSet(set.encounterId)
+                end
+                UpdateRosterPreview(true)
+                local playerCount = select(2, set.players:gsub("%S+", "")) + 1
+                SetRosterStatus(
+                    string.format("Loaded team: %s (%s, %d players)", set.name, set.difficulty, playerCount),
+                    0.4,
+                    1,
+                    0.4
+                )
+                return
+            end
+        end
+
+        SetRosterStatus("Error: Selected team no longer exists - re-import the export.", 1, 0, 0)
+    end, 110, 20, "Load Team")
+    loadTeamButton:SetPoint("TOPLEFT", bossTeamDropdown.widget, "BOTTOMLEFT", 0, -8)
+    loadTeamButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    local clearTeamButton = framework:CreateButton(parent, function()
+        local currentManager = GetRosterManager()
+        if currentManager and currentManager.SetActiveRosterSet then
+            currentManager:SetActiveRosterSet(nil)
+        end
+        SetDefaultRosterPreviewRows()
+        SetRosterStatus("Loaded team cleared.", 0.8, 0.8, 1)
+    end, 140, 20, "Clear Loaded Team")
+    clearTeamButton:SetPoint("LEFT", loadTeamButton.widget, "RIGHT", 10, 0)
+    clearTeamButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    local importButton = framework:CreateButton(parent, function()
+        local currentManager = GetRosterManager()
+        if not currentManager or not currentManager.ImportRosterSets then
+            AP:Print("Roster manager is unavailable.")
+            return
+        end
+
+        local saved, added, updated = currentManager:ImportRosterSets(GetRosterInputText())
+        if not saved then
+            SetRosterStatus(added or "Error: Import failed", 1, 0, 0)
+            return
+        end
+
+        SetRosterStatus(
+            string.format("Imported %d boss team(s): %d new, %d updated.", #saved, added, updated),
+            0.4,
+            1,
+            0.4
+        )
+        if bossTeamDropdown then
+            bossTeamDropdown:Refresh()
+        end
+    end, 150, 20, "Import From Editor")
+    importButton:SetPoint("LEFT", clearTeamButton.widget, "RIGHT", 10, 0)
+    importButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+
+    local inputLabel = CreateSectionLabel(parent, loadTeamButton.widget, "Boss Team Export (paste here to import)", -28)
 
     rosterInputEditor = framework:NewSpecialLuaEditorEntry(
         parent,
@@ -436,7 +558,7 @@ local function BuildRosterTab(framework, parent)
 
     rosterStatusLabel = CreateWrappedText(
         parent,
-        "Paste a semicolon-separated roster and click Preview.",
+        "Paste a boss team export above, click Import, then pick a team in the dropdown.",
         previewButton.widget,
         -12,
         FULL_CONTENT_WIDTH,

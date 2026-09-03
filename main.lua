@@ -38,6 +38,10 @@ local function EnsureSavedVariables()
     if type(APRaidUtilsDB.profile.team) ~= "table" then
         APRaidUtilsDB.profile.team = {}
     end
+
+    if type(APRaidUtilsDB.profile.rosterSets) ~= "table" then
+        APRaidUtilsDB.profile.rosterSets = {}
+    end
 end
 
 local function InitializeSavedVariables()

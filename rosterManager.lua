@@ -36,11 +36,12 @@ local function BuildFullPlayerName(name, realm)
 end
 
 function RosterManager:GetPreparedRoster(rosterString)
-    if not rosterString or strtrim(rosterString) == "" then
-        return nil, 0, "Error: No roster provided"
+    local playersString, resolveError = self:ResolveRosterString(rosterString)
+    if not playersString then
+        return nil, 0, resolveError
     end
 
-    local roster = self:ParseRoster(rosterString)
+    local roster = self:ParseRoster(playersString)
     local rosterCount = 0
     for _ in pairs(roster) do
         rosterCount = rosterCount + 1
@@ -53,11 +54,62 @@ function RosterManager:GetPreparedRoster(rosterString)
     return roster, rosterCount
 end
 
+function RosterManager:GetActiveRosterSet()
+    local activeId = type(APRaidUtilsDB) == "table"
+            and type(APRaidUtilsDB.profile) == "table"
+            and APRaidUtilsDB.profile.activeRosterSetId
+        or nil
+    if not activeId then
+        return nil
+    end
+
+    for _, set in ipairs(self:GetSavedRosterSets()) do
+        if set.encounterId == activeId then
+            return set
+        end
+    end
+    return nil
+end
+
+function RosterManager:SetActiveRosterSet(encounterId)
+    if type(APRaidUtilsDB) == "table" and type(APRaidUtilsDB.profile) == "table" then
+        APRaidUtilsDB.profile.activeRosterSetId = encounterId
+    end
+end
+
+-- Resolve the effective player list for roster actions. The boss-team export
+-- format (EncounterID/invitelist blocks) is the only supported source: the
+-- team selected in the Saved Boss Teams dropdown wins; otherwise pasted text
+-- is accepted when it contains exactly one boss block. Legacy plain name
+-- lists are no longer supported.
+function RosterManager:ResolveRosterString(rosterString)
+    local active = self:GetActiveRosterSet()
+    if active then
+        -- invitelist entries are space separated; ParseRoster eats ";"
+        return (active.players:gsub("%s+", ";"))
+    end
+
+    if type(rosterString) == "string" and rosterString:find("invitelist:") then
+        local sets = self:ParseRosterSets(rosterString)
+        if #sets == 1 then
+            return (sets[1].players:gsub("%s+", ";"))
+        elseif #sets > 1 then
+            return nil, "Error: Multiple boss teams found - select one in the Saved Boss Teams dropdown"
+        end
+    end
+
+    return nil, "Error: No boss team selected - pick one in the Saved Boss Teams dropdown"
+end
+
 function RosterManager:ParseRoster(rosterString)
     local roster = {}
     for nameRealm in string.gmatch(rosterString, "[^;]+") do
         local trimmed = strtrim(nameRealm)
-        if trimmed ~= "" then
+        if trimmed ~= "" and not trimmed:find(":") then
+            -- Tokens containing ":" are metadata fragments from boss-team
+            -- exports (EncounterID:..., Difficulty:..., invitelist:...),
+            -- never player names; skip them so a raw export degrades to a
+            -- clear "could not parse" error instead of garbage entries.
             local normalized = self:NormalizePlayerName(trimmed)
             if normalized then
                 roster[normalized] = trimmed
@@ -67,12 +119,90 @@ function RosterManager:ParseRoster(rosterString)
     return roster
 end
 
+-- Boss-team export format (one block per boss, multiple blocks concatenated):
+--   EncounterID:3470;Difficulty:Mythic;Name:Nek'zali the Soulcoiler
+--
+--   invitelist:Name-Realm Name-Realm ...;
+-- Returns an array of { encounterId, difficulty, name, players }.
+function RosterManager:ParseRosterSets(rosterString)
+    local sets = {}
+    if type(rosterString) ~= "string" or rosterString == "" then
+        return sets
+    end
+
+    for encounterId, difficulty, name, players in
+        rosterString:gmatch("EncounterID:(%d+);Difficulty:([^;\r\n]+);Name:([^;\r\n]+)[%s%S]-invitelist:([^;]*)")
+    do
+        local trimmedPlayers = strtrim(players or "")
+        if trimmedPlayers ~= "" then
+            sets[#sets + 1] = {
+                encounterId = tonumber(encounterId),
+                difficulty = strtrim(difficulty),
+                name = strtrim(name),
+                players = trimmedPlayers,
+            }
+        end
+    end
+    return sets
+end
+
+local function GetSavedRosterSetsTable()
+    if type(APRaidUtilsDB) ~= "table" or type(APRaidUtilsDB.profile) ~= "table" then
+        return nil
+    end
+    if type(APRaidUtilsDB.profile.rosterSets) ~= "table" then
+        APRaidUtilsDB.profile.rosterSets = {}
+    end
+    return APRaidUtilsDB.profile.rosterSets
+end
+
+function RosterManager:GetSavedRosterSets()
+    local saved = GetSavedRosterSetsTable()
+    return saved or {}
+end
+
+-- Import boss-team blocks into the profile: entries with an already-known
+-- encounterId are replaced in place, everything else is kept, so importing a
+-- fresh export updates the current tier without wiping other tiers.
+-- Returns the saved list, addedCount, updatedCount; or nil, errorMessage.
+function RosterManager:ImportRosterSets(rosterString)
+    local parsed = self:ParseRosterSets(rosterString)
+    if #parsed == 0 then
+        return nil, "Error: No boss teams found in the pasted string"
+    end
+
+    local saved = GetSavedRosterSetsTable()
+    if not saved then
+        return nil, "Error: Saved variables are not available yet"
+    end
+
+    local indexById = {}
+    for index, set in ipairs(saved) do
+        indexById[set.encounterId] = index
+    end
+
+    local added, updated = 0, 0
+    for _, set in ipairs(parsed) do
+        local existingIndex = indexById[set.encounterId]
+        if existingIndex then
+            saved[existingIndex] = set
+            updated = updated + 1
+        else
+            indexById[set.encounterId] = #saved + 1
+            saved[#saved + 1] = set
+            added = added + 1
+        end
+    end
+
+    return saved, added, updated
+end
+
 function RosterManager:GetCurrentRaidMembers()
     local members = {}
     if not IsInRaid() then
         return members
     end
-    
+
     local numMembers = GetNumGroupMembers()
     for i = 1, numMembers do
         local name, _, subgroup = GetRaidRosterInfo(i)
@@ -80,7 +210,7 @@ function RosterManager:GetCurrentRaidMembers()
             members[i] = {
                 name = name,
                 subgroup = subgroup,
-                index = i
+                index = i,
             }
         end
     end
@@ -147,19 +277,19 @@ function RosterManager:InviteMissing(roster)
     local invited = 0
     local currentMembers = self:GetCurrentGroupMembers()
     local alreadyPresent = {}
-    
+
     for _, member in pairs(currentMembers) do
         local normalized = self:NormalizePlayerName(member.name)
         alreadyPresent[normalized] = true
     end
-    
+
     for normalizedName, inviteName in pairs(roster) do
         if not alreadyPresent[normalizedName] then
             C_PartyInfo.InviteUnit(inviteName)
             invited = invited + 1
         end
     end
-    
+
     return invited
 end
 
@@ -268,19 +398,19 @@ function RosterManager:GetRosterPreview(rosterString)
 
     local currentMembers = self:GetCurrentGroupMembers()
     local alreadyPresent = {}
-    
+
     for _, member in pairs(currentMembers) do
         local normalized = self:NormalizePlayerName(member.name)
         alreadyPresent[normalized] = true
     end
-    
+
     local missing = {}
     for normalizedName, inviteName in pairs(roster) do
         if not alreadyPresent[normalizedName] then
             table.insert(missing, inviteName)
         end
     end
-    
+
     local toMoveOut = {}
     local toMoveIn = {}
     if IsInRaid() then
@@ -294,8 +424,8 @@ function RosterManager:GetRosterPreview(rosterString)
             end
         end
     end
-    
-    return {missing = missing, toMoveOut = toMoveOut, toMoveIn = toMoveIn}
+
+    return { missing = missing, toMoveOut = toMoveOut, toMoveIn = toMoveIn }
 end
 
 function RosterManager:ProcessRoster(rosterString)
@@ -312,8 +442,13 @@ function RosterManager:ProcessRoster(rosterString)
         return result, false, invited, movedOut, movedIn
     end
 
-    local result = string.format("Processed %d roster members\nInvited: %d\nMoved Out: %d\nMoved to 1-4: %d",
-        rosterCount, invited, movedOut, movedIn)
+    local result = string.format(
+        "Processed %d roster members\nInvited: %d\nMoved Out: %d\nMoved to 1-4: %d",
+        rosterCount,
+        invited,
+        movedOut,
+        movedIn
+    )
 
     return result, true, invited, movedOut, movedIn
 end
