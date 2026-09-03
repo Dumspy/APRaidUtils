@@ -156,6 +156,19 @@ local function SetRosterStatus(text, r, g, b)
     rosterStatusLabel:SetTextColor(r or 0.85, g or 0.85, b or 0.85, 1)
 end
 
+-- DF scrollboxes can end up with LineAmount > #Frames (line creation inside
+-- OnSizeChanged is xpcall'd and its failure swallowed, leaving the desync
+-- unhealable). Frames is append-only, so a missing index is always #Frames + 1;
+-- create it on demand and re-fetch via GetLine so it is marked _InUse.
+local function GetOrCreateScrollLine(scrollBox, lineIndex, createLineFunc)
+    local line = scrollBox:GetLine(lineIndex)
+    if not line and lineIndex == scrollBox:GetNumFramesCreated() + 1 then
+        scrollBox:CreateLine(createLineFunc)
+        line = scrollBox:GetLine(lineIndex)
+    end
+    return line
+end
+
 local function CreateRosterPreviewLine(self, index)
     local line = CreateFrame("Frame", "$parentLine" .. index, self, "BackdropTemplate")
     line:SetPoint("TOPLEFT", self, "TOPLEFT", 1, -((index - 1) * ROSTER_PREVIEW_ROW_HEIGHT) - 1)
@@ -180,7 +193,10 @@ local function RefreshRosterPreviewLines(scrollBox, data, offset, totalLines)
     for lineIndex = 1, totalLines do
         local row = data[lineIndex + offset]
         if row then
-            local line = scrollBox:GetLine(lineIndex)
+            local line = GetOrCreateScrollLine(scrollBox, lineIndex, CreateRosterPreviewLine)
+            if not line then
+                return
+            end
             line.Text:SetText(row.text or "")
 
             if row.kind == "section" then
@@ -370,7 +386,10 @@ local function RefreshVersionsLines(scrollBox, data, offset, totalLines)
         local dataIndex = lineIndex + offset
         local row = data[dataIndex]
         if row then
-            local line = scrollBox:GetLine(lineIndex)
+            local line = GetOrCreateScrollLine(scrollBox, lineIndex, CreateVersionsLine)
+            if not line then
+                return
+            end
             local isPlayer = row.name == playerName
 
             line:SetBackdropColor(
