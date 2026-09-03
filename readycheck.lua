@@ -11,10 +11,12 @@ AP.ReadyCheck = ReadyCheck
 -- Buff matching
 --
 -- The built-in columns match auras by case-insensitive name pattern so they
--- keep working across raid tiers without per-tier ID updates. When Blizzard
--- renames a buff, adjust the patterns here. The custom column (settings)
--- matches spell IDs, which is locale independent and good for tier-specific
--- consumables the patterns miss.
+-- keep working across raid tiers without per-tier ID updates. The pattern
+-- fallbacks are not hardcoded: they are resolved at first scan from the
+-- NSRT-sourced spell IDs (localized spell names), so a re-ID'd buff with the
+-- same name still matches and locale correctness comes for free. The custom
+-- column (settings) matches spell IDs, which is locale independent and good
+-- for tier-specific consumables the patterns miss.
 -- ---------------------------------------------------------------------------
 
 -- Midnight (12.x) consumable spell IDs, sourced from Northern Sky Raid Tools.
@@ -33,29 +35,33 @@ local BUFF_COLUMNS = {
     {
         key = "food",
         label = "Food",
-        patterns = FOOD_PATTERNS,
-        buffIcons = { [136000] = true }, -- generic "Well Fed" icon: any food rank/variant
+        -- NSRT matches food by the localized "Well Fed" aura name; the
+        -- generic Well Fed icon (136000) no longer covers Midnight food auras.
+        nameLookups = { "Well Fed" },
+        buffIcons = { [136000] = true },
         iconFile = 136000,
     },
     {
         key = "flask",
         label = "Flask",
-        patterns = FLASK_PATTERNS,
         spellIds = MIDNIGHT_FLASK_SPELL_IDS,
+        patternSpellIds = MIDNIGHT_FLASK_SPELL_IDS,
         iconSpellId = 1235111,
     },
     {
         key = "vantus",
         label = "Vantus",
         dynamicVantus = true,
-        patterns = VANTUS_PATTERNS,
         iconSpellId = MIDNIGHT_VANTUS_SPELL_ID,
     },
     {
         key = "augment",
         label = "Aug",
-        patterns = AUGMENT_PATTERNS,
         spellIds = { MIDNIGHT_AUGMENT_SPELL_ID },
+        -- Exact-name fallback (not substring): variant consumables whose aura
+        -- names merely CONTAIN the rune's name (e.g. Void-touched orbs) must
+        -- not light this column up.
+        exactSpellIds = { MIDNIGHT_AUGMENT_SPELL_ID },
         iconSpellId = MIDNIGHT_AUGMENT_SPELL_ID,
     },
     {
@@ -75,7 +81,7 @@ local BUFF_COLUMNS = {
     },
     { key = "motw", label = "MotW", names = { "mark of the wild" }, spellIds = { 1126 }, iconSpellId = 1126 },
     { key = "shout", label = "Shout", names = { "battle shout" }, spellIds = { 6673 }, iconSpellId = 6673 },
-    { key = "brill", label = "Brill", names = { "arcane brilliance" }, spellIds = { 1459 }, iconSpellId = 1459 },
+    { key = "brill", label = "Brill", names = { "arcane intellect" }, spellIds = { 1459 }, iconSpellId = 1459 },
     { key = "skyfury", label = "Skyfury", names = { "skyfury" }, spellIds = { 462854 }, iconSpellId = 462854 },
     {
         -- Evoker buff: one spell ID per RECEIVING class (see NSRT's table).
@@ -150,6 +156,14 @@ local auraCache = {} -- name -> { [category] = { auraName, ... } }
 
 local customIds = {}
 
+-- UNIT_AURA fires very densely during a ready check (food/flask/rune buff
+-- waves across the raid). Rather than rescanning auras and repainting the
+-- scrollbox per event, mark units dirty and flush them on this debounce:
+-- a burst of aura events becomes one rescan + one repaint.
+local AURA_REFRESH_DEBOUNCE = 0.25 -- seconds
+local dirtyUnits = {} -- unit -> row info, pending debounced aura rescan
+local auraRefreshTimer
+
 -- Temporary diagnostics: enable with /run APRaidUtils.ReadyCheck:SetDebug(true)
 local debugEnabled = false
 
@@ -212,7 +226,8 @@ end
 
 local function NameMatchesAny(auraName, patterns)
     for _, pattern in ipairs(patterns) do
-        if strfind(auraName, pattern) then
+        -- plain-text find: spell names may contain Lua pattern magic chars
+        if strfind(auraName, pattern, 1, true) then
             return true
         end
     end
@@ -234,6 +249,52 @@ local function GetVantusPrefix()
         end
     end
     return vantusPrefix or nil
+end
+
+-- Resolve the name fallbacks (column.patterns = substring match,
+-- column.names = exact match) from the NSRT-sourced spell IDs on first use.
+-- Retries until every fallback column has resolved, in case spell info is not
+-- yet available when the popup is first built.
+local NAME_FALLBACK_KINDS = {
+    { source = "patternSpellIds", target = "patterns" },
+    { source = "exactSpellIds", target = "names" },
+    -- nameLookups: English spell names to resolve to their localized aura
+    -- names (NSRT-style: C_Spell.GetSpellInfo("Well Fed")); falls back to the
+    -- literal if the lookup fails on an untranslated client.
+    { source = "nameLookups", target = "names", byName = true },
+}
+
+local function ResolvePatternFallbacks()
+    local pending = false
+    for _, column in ipairs(BUFF_COLUMNS) do
+        for _, kind in ipairs(NAME_FALLBACK_KINDS) do
+            if column[kind.source] and not column[kind.target] then
+                local built = {}
+                for _, key in ipairs(column[kind.source]) do
+                    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(key)
+                    local name = info and info.name
+                    if not name or name == "" or issecretvalue(name) then
+                        name = kind.byName and key or nil -- literal English fallback for name lookups
+                    end
+                    if name then
+                        built[#built + 1] = strlower(name)
+                    end
+                end
+                if #built > 0 then
+                    column[kind.target] = built
+                    -- keep already-built layout copies in sync
+                    for _, active in ipairs(currentColumns) do
+                        if active.key == column.key then
+                            active[kind.target] = built
+                        end
+                    end
+                else
+                    pending = true
+                end
+            end
+        end
+    end
+    return not pending
 end
 
 local function ScanUnitAuras(unit)
@@ -265,6 +326,8 @@ local function ScanUnitAuras(unit)
 
     local localizedVantusPrefix = GetVantusPrefix()
 
+    ResolvePatternFallbacks()
+
     -- Iterate the unit's auras by index (the approach NSRT uses on Midnight;
     -- AuraUtil.ForEachAura does not return auras on this client).
     for auraIndex = 1, 100 do
@@ -274,9 +337,20 @@ local function ScanUnitAuras(unit)
         end
 
         local auraName = auraData.name
-        if auraName and auraName ~= "" and not issecretvalue(auraName) then
+        local spellId = auraData.spellId
+        local icon = auraData.icon
+        local instanceID = auraData.auraInstanceID
+
+        -- Midnight redacts some auras as secret values; any comparison or
+        -- read of a secret field hard-errors while addon code executes, so
+        -- issecretvalue must run BEFORE any other use of these fields
+        -- (including a simple `== ""` check). Skip redacted auras entirely.
+        local redacted = issecretvalue(auraName)
+            or issecretvalue(spellId)
+            or issecretvalue(icon)
+            or issecretvalue(instanceID)
+        if not redacted and auraName and auraName ~= "" then
             local lower = strlower(auraName)
-            local spellId = auraData.spellId
             for _, column in ipairs(currentColumns) do
                 local matched = false
                 if column.bySpellId then
@@ -289,7 +363,7 @@ local function ScanUnitAuras(unit)
                         end
                     end
                 end
-                if not matched and column.buffIcons and auraData.icon and column.buffIcons[auraData.icon] then
+                if not matched and column.buffIcons and icon and column.buffIcons[icon] then
                     matched = true
                 end
                 if not matched and column.dynamicVantus and localizedVantusPrefix then
@@ -311,8 +385,8 @@ local function ScanUnitAuras(unit)
                     list[#list + 1] = {
                         name = auraName,
                         spellId = spellId,
-                        instanceID = auraData.auraInstanceID,
-                        icon = auraData.icon,
+                        instanceID = instanceID,
+                        icon = icon,
                     }
                 end
             end
@@ -456,6 +530,7 @@ local function ApplySavedPosition()
 end
 
 local function GetColumnLayout()
+    ResolvePatternFallbacks()
     local columns = {}
     for _, definition in ipairs(BUFF_COLUMNS) do
         columns[#columns + 1] = {
@@ -894,6 +969,39 @@ local function RefreshRowByRow(row)
     end
 end
 
+local function IsRowDisplayed(row)
+    for _, data in ipairs(displayRows) do
+        if data.info == row then
+            return true
+        end
+    end
+    return false
+end
+
+-- Debounced flush for UNIT_AURA bursts: rescan each dirty unit once, then
+-- repaint the scrollbox (and summary) at most one time for the whole batch.
+local function FlushDirtyAuras()
+    auraRefreshTimer = nil
+    if not checkActive then
+        wipe(dirtyUnits)
+        return
+    end
+
+    local anyVisible = false
+    for unit, row in pairs(dirtyUnits) do
+        dirtyUnits[unit] = nil
+        ScanUnitAuras(unit)
+        if not anyVisible and IsRowDisplayed(row) then
+            anyVisible = true
+        end
+    end
+
+    if anyVisible and rowScrollBox then
+        rowScrollBox:Refresh()
+    end
+    RefreshSummary()
+end
+
 local function EnsurePopup()
     if popup then
         return popup
@@ -1080,8 +1188,12 @@ function ReadyCheck:OnUnitAura(unitTarget)
         return
     end
 
-    ScanUnitAuras(row.unit)
-    RefreshRowByRow(row)
+    -- Coalesce: mark dirty and let the debounce timer do one rescan + one
+    -- repaint for the whole burst instead of paying it per event.
+    dirtyUnits[row.unit] = row
+    if not auraRefreshTimer then
+        auraRefreshTimer = C_Timer.NewTimer(AURA_REFRESH_DEBOUNCE, FlushDirtyAuras)
+    end
 end
 
 function ReadyCheck:OnRosterUpdate()
@@ -1150,6 +1262,11 @@ function ReadyCheck:Disable()
     AP:DisableFeatureEvents("readycheck")
     checkActive = false
     CancelFinishTimer()
+    if auraRefreshTimer then
+        auraRefreshTimer:Cancel()
+        auraRefreshTimer = nil
+    end
+    wipe(dirtyUnits)
     if popup then
         popup:Hide()
     end
