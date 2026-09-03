@@ -156,7 +156,7 @@ local function BuildMenuItems(framework, items, menuItems)
 end
 
 AP.SettingsDFRenderer = {
-    BuildMenu = function(self, parent, framework, layout)
+    BuildMenu = function(self, parent, framework, layout, items)
         layout = layout or {}
 
         local menuItems = {
@@ -164,7 +164,7 @@ AP.SettingsDFRenderer = {
             always_boxfirst = true,
         }
 
-        BuildMenuItems(framework, AP.SettingsRegistry:GetSections(), menuItems)
+        BuildMenuItems(framework, items or AP.SettingsRegistry:GetSections(), menuItems)
 
         if menuItems[#menuItems] and menuItems[#menuItems].type == "blank" then
             table.remove(menuItems, #menuItems)

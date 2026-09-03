@@ -12,6 +12,51 @@ local function GetReadyCheckModule()
     return AP.ReadyCheck
 end
 
+local function GetTeamModule()
+    return AP.Team
+end
+
+-- Items for the dedicated Multibox tab (ui/main.lua); not part of the
+-- Settings tab surface.
+local function GetMultiboxItems()
+    return {
+        {
+            id = "teamEnabled",
+            type = "toggle",
+            name = "Enable Multiboxing Team",
+            desc = "Team status anchor, team mount command and an auto-maintained follow macro. Install and enable this addon on every client of your team.",
+            get = function()
+                local module = GetTeamModule()
+                return module and module:IsEnabled() or false
+            end,
+            set = function(value)
+                local module = GetTeamModule()
+                if module then
+                    module:SetEnabled(value)
+                end
+            end,
+            order = 1,
+        },
+        {
+            id = "teamIsMain",
+            type = "toggle",
+            name = "This box is the main",
+            desc = "Check this on exactly one client - the character your followers follow and whose mount commands the team obeys. If two boxes claim to be the main, a red warning appears on screen.",
+            get = function()
+                local module = GetTeamModule()
+                return module and module:GetIsMain() or false
+            end,
+            set = function(value)
+                local module = GetTeamModule()
+                if module then
+                    module:SetIsMain(value)
+                end
+            end,
+            order = 2,
+        },
+    }
+end
+
 local function ToggleAllAnchors()
     if AP.APAnchor then
         AP.APAnchor:ToggleAllAnchors()
@@ -229,4 +274,5 @@ end
 
 AP.SettingsRegistry = {
     GetSections = GetSections,
+    GetMultiboxItems = GetMultiboxItems,
 }

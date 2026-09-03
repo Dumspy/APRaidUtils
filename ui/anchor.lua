@@ -344,11 +344,16 @@ local function BuildSettingsPanel(frame, key)
         end
     end)
 
-    local yOffset = -10
+    local yOffset = -30
     local isContent = contentAnchors[key] == true
 
     if isContent then
-        panel:SetHeight(170)
+        panel:SetHeight(190)
+    else
+        -- Full text-anchor panel: scale + size/width/height sliders + font +
+        -- color + opacity + outline + lock + hide button do not fit the
+        -- default 400px panel.
+        panel:SetHeight(560)
     end
 
     -- Scale applies to every anchor type.
@@ -356,8 +361,19 @@ local function BuildSettingsPanel(frame, key)
     scaleLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     yOffset = yOffset - 18
 
-    local scaleSlider =
-        DF:CreateSlider(panel, 240, 16, 0.5, 2.0, 0.05, settings.scale or 1.0, true, nil, "$parentScaleSlider", "Scale:")
+    local scaleSlider = DF:CreateSlider(
+        panel,
+        240,
+        16,
+        0.5,
+        2.0,
+        0.05,
+        settings.scale or 1.0,
+        true,
+        nil,
+        "$parentScaleSlider",
+        "Scale:"
+    )
     scaleSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
     scaleSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
     scaleSlider:SetValue(settings.scale or 1.0)
@@ -368,185 +384,196 @@ local function BuildSettingsPanel(frame, key)
     yOffset = yOffset - 40
 
     if not isContent then
-    local sizeLabel = DF:CreateLabel(panel, "Text Size", 10, "orange")
-    sizeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    yOffset = yOffset - 18
+        local sizeLabel = DF:CreateLabel(panel, "Text Size", 10, "orange")
+        sizeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        yOffset = yOffset - 18
 
-    local sizeSlider =
-        DF:CreateSlider(panel, 200, 16, 10, 72, 1, settings.fontSize, false, nil, "$parentSizeSlider", "Size:")
-    sizeSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
-    sizeSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    sizeSlider:SetValue(math.min(settings.fontSize or 14, 72))
-    sizeSlider:SetValueChangedFunction(function(self)
-        local value = self:GetValue()
-        local fixedValue = RoundAnchorValue(value or settings.fontSize or 14)
-        SaveAnchorSetting(key, "fontSize", fixedValue)
-        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        ApplySettingsToFrame(frame, currentSettings)
-    end)
-    yOffset = yOffset - 40
-
-    local widthLabel = DF:CreateLabel(panel, "Max Width", 10, "orange")
-    widthLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    yOffset = yOffset - 18
-
-    local widthSlider = DF:CreateSlider(
-        panel,
-        200,
-        16,
-        100,
-        2000,
-        10,
-        settings.maxWidth or 300,
-        false,
-        nil,
-        "$parentWidthSlider",
-        "Width:"
-    )
-    widthSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
-    widthSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    widthSlider:SetValue(settings.maxWidth or 300)
-    widthSlider:SetValueChangedFunction(function(self)
-        local value = self:GetValue()
-        local fixedValue = RoundAnchorValue(value or settings.maxWidth or 300)
-        SaveAnchorSetting(key, "maxWidth", fixedValue)
-        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        ApplySettingsToFrame(frame, currentSettings)
-    end)
-    yOffset = yOffset - 40
-
-    local heightLabel = DF:CreateLabel(panel, "Max Height", 10, "orange")
-    heightLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    yOffset = yOffset - 18
-
-    local heightSlider = DF:CreateSlider(
-        panel,
-        200,
-        16,
-        20,
-        1000,
-        10,
-        settings.maxHeight or 60,
-        false,
-        nil,
-        "$parentHeightSlider",
-        "Height:"
-    )
-    heightSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
-    heightSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    heightSlider:SetValue(settings.maxHeight or 60)
-    heightSlider:SetValueChangedFunction(function(self)
-        local value = self:GetValue()
-        local fixedValue = RoundAnchorValue(value or settings.maxHeight or 60)
-        SaveAnchorSetting(key, "maxHeight", fixedValue)
-        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        ApplySettingsToFrame(frame, currentSettings)
-    end)
-    yOffset = yOffset - 40
-
-    local fontLabel = DF:CreateLabel(panel, "Font", 10, "orange")
-    fontLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    yOffset = yOffset - 18
-
-    local fontDropdown = DF:CreateFontDropDown(
-        panel,
-        function(_, _, value)
-            if value == "DEFAULT" then
-                SaveAnchorSetting(key, "font", nil)
-            else
-                SaveAnchorSetting(key, "font", value)
-            end
-
+        local sizeSlider =
+            DF:CreateSlider(panel, 200, 16, 10, 72, 1, settings.fontSize, false, nil, "$parentSizeSlider", "Size:")
+        sizeSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
+        sizeSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        sizeSlider:SetValue(math.min(settings.fontSize or 14, 72))
+        sizeSlider:SetValueChangedFunction(function(self)
+            local value = self:GetValue()
+            local fixedValue = RoundAnchorValue(value or settings.fontSize or 14)
+            SaveAnchorSetting(key, "fontSize", fixedValue)
             local currentSettings = GetMergedSettings(key, frame.UserDefaults)
             ApplySettingsToFrame(frame, currentSettings)
-        end,
-        GetFontDropdownValue(settings.font),
-        240,
-        20,
-        nil,
-        "$parentFontDropdown",
-        DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"),
-        true
-    )
-    fontDropdown:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    frame.fontDropdown = fontDropdown
-    yOffset = yOffset - 30
+        end)
+        yOffset = yOffset - 40
 
-    local colorLabel = DF:CreateLabel(panel, "Color", 10, "orange")
-    colorLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    yOffset = yOffset - 18
+        local widthLabel = DF:CreateLabel(panel, "Max Width", 10, "orange")
+        widthLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        yOffset = yOffset - 18
 
-    local colorButton = DF:CreateButton(panel, function()
-        local r, g, b = settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0
-        local opacity = settings.opacity or 1.0
+        local widthSlider = DF:CreateSlider(
+            panel,
+            200,
+            16,
+            100,
+            2000,
+            10,
+            settings.maxWidth or 300,
+            false,
+            nil,
+            "$parentWidthSlider",
+            "Width:"
+        )
+        widthSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
+        widthSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        widthSlider:SetValue(settings.maxWidth or 300)
+        widthSlider:SetValueChangedFunction(function(self)
+            local value = self:GetValue()
+            local fixedValue = RoundAnchorValue(value or settings.maxWidth or 300)
+            SaveAnchorSetting(key, "maxWidth", fixedValue)
+            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+            ApplySettingsToFrame(frame, currentSettings)
+        end)
+        yOffset = yOffset - 40
 
-        local info = {
-            swatchFunc = function()
-                local cr, cg, cb = ColorPickerFrame:GetColorRGB()
-                SaveAnchorSetting(key, "colorR", cr)
-                SaveAnchorSetting(key, "colorG", cg)
-                SaveAnchorSetting(key, "colorB", cb)
+        local heightLabel = DF:CreateLabel(panel, "Max Height", 10, "orange")
+        heightLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        yOffset = yOffset - 18
+
+        local heightSlider = DF:CreateSlider(
+            panel,
+            200,
+            16,
+            20,
+            1000,
+            10,
+            settings.maxHeight or 60,
+            false,
+            nil,
+            "$parentHeightSlider",
+            "Height:"
+        )
+        heightSlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
+        heightSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        heightSlider:SetValue(settings.maxHeight or 60)
+        heightSlider:SetValueChangedFunction(function(self)
+            local value = self:GetValue()
+            local fixedValue = RoundAnchorValue(value or settings.maxHeight or 60)
+            SaveAnchorSetting(key, "maxHeight", fixedValue)
+            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+            ApplySettingsToFrame(frame, currentSettings)
+        end)
+        yOffset = yOffset - 40
+
+        local fontLabel = DF:CreateLabel(panel, "Font", 10, "orange")
+        fontLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        yOffset = yOffset - 18
+
+        local fontDropdown = DF:CreateFontDropDown(
+            panel,
+            function(_, _, value)
+                if value == "DEFAULT" then
+                    SaveAnchorSetting(key, "font", nil)
+                else
+                    SaveAnchorSetting(key, "font", value)
+                end
+
                 local currentSettings = GetMergedSettings(key, frame.UserDefaults)
                 ApplySettingsToFrame(frame, currentSettings)
             end,
-            hasOpacity = true,
-            opacityFunc = function()
-                local o = ColorPickerFrame:GetColorAlpha()
-                SaveAnchorSetting(key, "opacity", o)
-                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-                ApplySettingsToFrame(frame, currentSettings)
-            end,
-            opacity = opacity,
-            cancelFunc = function()
-                SaveAnchorSetting(key, "colorR", r)
-                SaveAnchorSetting(key, "colorG", g)
-                SaveAnchorSetting(key, "colorB", b)
-                SaveAnchorSetting(key, "opacity", opacity)
-                local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-                ApplySettingsToFrame(frame, currentSettings)
-            end,
-            r = r,
-            g = g,
-            b = b,
-            extraInfo = key,
-        }
+            GetFontDropdownValue(settings.font),
+            240,
+            20,
+            nil,
+            "$parentFontDropdown",
+            DF:GetTemplate("dropdown", "OPTIONS_DROPDOWN_TEMPLATE"),
+            true
+        )
+        fontDropdown:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        frame.fontDropdown = fontDropdown
+        yOffset = yOffset - 30
 
-        ColorPickerFrame:Hide()
-        ColorPickerFrame:SetupColorPickerAndShow(info)
-    end, 240, 22, "Pick Color")
-    colorButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    colorButton:SetTemplate(DF:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
-    yOffset = yOffset - 32
-    local opacityLabel = DF:CreateLabel(panel, "Opacity", 10, "orange")
-    opacityLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    yOffset = yOffset - 18
+        local colorLabel = DF:CreateLabel(panel, "Color", 10, "orange")
+        colorLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        yOffset = yOffset - 18
 
-    local opacitySlider =
-        DF:CreateSlider(panel, 240, 16, 0.1, 1.0, 0.05, settings.opacity, true, nil, "$parentOpacitySlider", "Opacity:")
-    opacitySlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
-    opacitySlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    opacitySlider:SetValue(settings.opacity or 1.0)
-    opacitySlider:SetValueChangedFunction(function(self)
-        local value = self:GetValue()
-        SaveAnchorSetting(key, "opacity", value)
-        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        ApplySettingsToFrame(frame, currentSettings)
-    end)
-    yOffset = yOffset - 40
+        local colorButton = DF:CreateButton(panel, function()
+            local r, g, b = settings.colorR or 1.0, settings.colorG or 0.82, settings.colorB or 0
+            local opacity = settings.opacity or 1.0
 
-    local outlineSwitch = DF:CreateSwitch(panel, function(_, _, value)
-        SaveAnchorSetting(key, "outline", value)
-        local currentSettings = GetMergedSettings(key, frame.UserDefaults)
-        ApplySettingsToFrame(frame, currentSettings)
-    end, settings.outline or false, 20, 20, nil, nil, nil, "$parentOutlineSwitch")
-    outlineSwitch:SetAsCheckBox()
-    outlineSwitch:SetTemplate(DF:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
-    outlineSwitch:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
-    local outlineLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    outlineLabel:SetPoint("LEFT", outlineSwitch.widget, "RIGHT", 6, 0)
-    outlineLabel:SetText("Text Outline")
-    outlineLabel:SetTextColor(0.9, 0.9, 0.9, 1)
-    yOffset = yOffset - 30
+            local info = {
+                swatchFunc = function()
+                    local cr, cg, cb = ColorPickerFrame:GetColorRGB()
+                    SaveAnchorSetting(key, "colorR", cr)
+                    SaveAnchorSetting(key, "colorG", cg)
+                    SaveAnchorSetting(key, "colorB", cb)
+                    local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                    ApplySettingsToFrame(frame, currentSettings)
+                end,
+                hasOpacity = true,
+                opacityFunc = function()
+                    local o = ColorPickerFrame:GetColorAlpha()
+                    SaveAnchorSetting(key, "opacity", o)
+                    local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                    ApplySettingsToFrame(frame, currentSettings)
+                end,
+                opacity = opacity,
+                cancelFunc = function()
+                    SaveAnchorSetting(key, "colorR", r)
+                    SaveAnchorSetting(key, "colorG", g)
+                    SaveAnchorSetting(key, "colorB", b)
+                    SaveAnchorSetting(key, "opacity", opacity)
+                    local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+                    ApplySettingsToFrame(frame, currentSettings)
+                end,
+                r = r,
+                g = g,
+                b = b,
+                extraInfo = key,
+            }
+
+            ColorPickerFrame:Hide()
+            ColorPickerFrame:SetupColorPickerAndShow(info)
+        end, 240, 22, "Pick Color")
+        colorButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        colorButton:SetTemplate(DF:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
+        yOffset = yOffset - 32
+        local opacityLabel = DF:CreateLabel(panel, "Opacity", 10, "orange")
+        opacityLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        yOffset = yOffset - 18
+
+        local opacitySlider = DF:CreateSlider(
+            panel,
+            240,
+            16,
+            0.1,
+            1.0,
+            0.05,
+            settings.opacity,
+            true,
+            nil,
+            "$parentOpacitySlider",
+            "Opacity:"
+        )
+        opacitySlider:SetTemplate(DF:GetTemplate("slider", "OPTIONS_SLIDER_TEMPLATE"))
+        opacitySlider:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        opacitySlider:SetValue(settings.opacity or 1.0)
+        opacitySlider:SetValueChangedFunction(function(self)
+            local value = self:GetValue()
+            SaveAnchorSetting(key, "opacity", value)
+            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+            ApplySettingsToFrame(frame, currentSettings)
+        end)
+        yOffset = yOffset - 40
+
+        local outlineSwitch = DF:CreateSwitch(panel, function(_, _, value)
+            SaveAnchorSetting(key, "outline", value)
+            local currentSettings = GetMergedSettings(key, frame.UserDefaults)
+            ApplySettingsToFrame(frame, currentSettings)
+        end, settings.outline or false, 20, 20, nil, nil, nil, "$parentOutlineSwitch")
+        outlineSwitch:SetAsCheckBox()
+        outlineSwitch:SetTemplate(DF:GetTemplate("switch", "OPTIONS_CHECKBOX_BRIGHT_TEMPLATE"))
+        outlineSwitch:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, yOffset)
+        local outlineLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        outlineLabel:SetPoint("LEFT", outlineSwitch.widget, "RIGHT", 6, 0)
+        outlineLabel:SetText("Text Outline")
+        outlineLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+        yOffset = yOffset - 30
     end -- not isContent
 
     local lockSwitch = DF:CreateSwitch(panel, function(_, _, value)

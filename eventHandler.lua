@@ -18,6 +18,18 @@ local featureEvents = {
     breaktimer = { "CHAT_MSG_ADDON", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" },
     sszorak = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ENCOUNTER_START", "ENCOUNTER_END" },
     readycheck = { "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED", "UNIT_AURA", "GROUP_ROSTER_UPDATE" },
+    team = {
+        "GROUP_ROSTER_UPDATE",
+        "UNIT_FLAGS",
+        "UNIT_SPELLCAST_SUCCEEDED",
+        "COMPANION_UPDATE",
+        "AUTOFOLLOW_BEGIN",
+        "AUTOFOLLOW_END",
+        "PLAYER_REGEN_ENABLED",
+        "PLAYER_DEAD",
+        "PLAYER_ALIVE",
+        "PLAYER_UNGHOST",
+    },
 }
 
 local activeFeatures = {}
@@ -68,13 +80,51 @@ function AP:HandleEvent(event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         local isInitialLogin, isReloadingUi = ...
         self:OnPlayerEnteringWorld(isInitialLogin, isReloadingUi)
+
+        -- Core event, always registered; the team handler gates on IsEnabled.
+        if self.Team and self.Team.OnPlayerEnteringWorld then
+            self.Team:OnPlayerEnteringWorld()
+        end
     elseif event == "GROUP_ROSTER_UPDATE" then
-        -- Only reachable while leadpass or readycheck is enabled (event is gated).
+        -- Only reachable while leadpass, readycheck or team is enabled (event is gated).
         if self.LeadPassReminder and self.LeadPassReminder.CheckConditions then
             self.LeadPassReminder:CheckConditions()
         end
         if self.ReadyCheck and self.ReadyCheck.OnRosterUpdate then
             self.ReadyCheck:OnRosterUpdate()
+        end
+        if self.Team and self.Team.OnRosterUpdate then
+            self.Team:OnRosterUpdate()
+        end
+    elseif event == "UNIT_FLAGS" then
+        -- Only reachable while team is enabled (event is gated).
+        if self.Team and self.Team.OnUnitFlags then
+            self.Team:OnUnitFlags(...)
+        end
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+        -- Only reachable while team is enabled (event is gated).
+        if self.Team and self.Team.OnSpellcastSucceeded then
+            self.Team:OnSpellcastSucceeded(...)
+        end
+    elseif event == "COMPANION_UPDATE" then
+        -- Only reachable while team is enabled (event is gated).
+        if self.Team and self.Team.OnCompanionUpdate then
+            self.Team:OnCompanionUpdate()
+        end
+    elseif event == "AUTOFOLLOW_BEGIN" then
+        -- Only reachable while team is enabled (event is gated).
+        if self.Team and self.Team.SetFollowing then
+            self.Team:SetFollowing(true)
+        end
+    elseif event == "AUTOFOLLOW_END" then
+        -- Only reachable while team is enabled (event is gated).
+        if self.Team and self.Team.SetFollowing then
+            self.Team:SetFollowing(false)
+        end
+    elseif event == "PLAYER_DEAD" or event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" then
+        -- Only reachable while team is enabled (event is gated).
+        if self.Team and self.Team.OnLifeStateChanged then
+            self.Team:OnLifeStateChanged()
         end
     elseif event == "READY_CHECK" then
         -- Only reachable while readycheck is enabled (event is gated).
@@ -125,6 +175,9 @@ function AP:HandleEvent(event, ...)
         end
         if self.Sszorak and self.Sszorak.OnPlayerRegenEnabled then
             self.Sszorak:OnPlayerRegenEnabled()
+        end
+        if self.Team and self.Team.OnPlayerRegenEnabled then
+            self.Team:OnPlayerRegenEnabled()
         end
     end
 end

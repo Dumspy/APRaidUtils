@@ -17,6 +17,7 @@ leadpass.lua
 breaktimer.lua
 sszorak.lua
 readycheck.lua
+team.lua
 settings\registry.lua
 settings\renderers\df.lua
 versionChecker\main.lua

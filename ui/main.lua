@@ -10,6 +10,8 @@ local versionsStatusLabel
 local versionsResultsScrollBox
 local settingsTab
 local settingsTabRefreshBase
+local multiboxTab
+local multiboxStatusLabel
 
 local CONTENT_WIDTH = 1020
 local BODY_TOP_OFFSET = -90
@@ -29,6 +31,7 @@ local versionColumns = {
 local tabList = {
     { name = "Roster", text = "Roster" },
     { name = "Versions", text = "Versions" },
+    { name = "Multibox", text = "Multibox" },
     { name = "Settings", text = "Settings" },
 }
 
@@ -269,7 +272,17 @@ local function UpdateRosterPreview(updateStatus)
     SetRosterPreviewRows(BuildRosterPreviewRows(preview))
 
     if updateStatus then
-        SetRosterStatus(string.format("Preview: %d to invite, %d to move in, %d to move out", #preview.missing, #preview.toMoveIn, #preview.toMoveOut), 0.8, 0.8, 1)
+        SetRosterStatus(
+            string.format(
+                "Preview: %d to invite, %d to move in, %d to move out",
+                #preview.missing,
+                #preview.toMoveIn,
+                #preview.toMoveOut
+            ),
+            0.8,
+            0.8,
+            1
+        )
     end
 
     return true, preview
@@ -358,7 +371,12 @@ local function RefreshVersionsLines(scrollBox, data, offset, totalLines)
             local line = scrollBox:GetLine(lineIndex)
             local isPlayer = row.name == playerName
 
-            line:SetBackdropColor(isPlayer and 0.12 or 0.08, isPlayer and 0.16 or 0.08, isPlayer and 0.1 or 0.1, isPlayer and 0.55 or 0.35)
+            line:SetBackdropColor(
+                isPlayer and 0.12 or 0.08,
+                isPlayer and 0.16 or 0.08,
+                isPlayer and 0.1 or 0.1,
+                isPlayer and 0.55 or 0.35
+            )
 
             local nameText = isPlayer and (row.name .. " (You)") or row.name
             line.Columns.name:SetText(nameText)
@@ -387,7 +405,15 @@ local function BuildRosterTab(framework, parent)
     local anchor = CreateBodyAnchor(parent)
     local inputLabel = CreateSectionLabel(parent, anchor, "Roster String")
 
-    rosterInputEditor = framework:NewSpecialLuaEditorEntry(parent, FULL_CONTENT_WIDTH, ROSTER_INPUT_HEIGHT, nil, "$parentRosterInputEditor", true, false)
+    rosterInputEditor = framework:NewSpecialLuaEditorEntry(
+        parent,
+        FULL_CONTENT_WIDTH,
+        ROSTER_INPUT_HEIGHT,
+        nil,
+        "$parentRosterInputEditor",
+        true,
+        false
+    )
     StyleInputEditor(framework, rosterInputEditor)
     rosterInputEditor:SetPoint("TOPLEFT", inputLabel, "BOTTOMLEFT", 0, -6)
     rosterInputEditor:SetText("")
@@ -408,7 +434,16 @@ local function BuildRosterTab(framework, parent)
     moveButton:SetPoint("LEFT", inviteButton.widget, "RIGHT", 10, 0)
     moveButton:SetTemplate(framework:GetTemplate("button", "OPTIONS_BUTTON_TEMPLATE"))
 
-    rosterStatusLabel = CreateWrappedText(parent, "Paste a semicolon-separated roster and click Preview.", previewButton.widget, -12, FULL_CONTENT_WIDTH, 0.8, 0.8, 1)
+    rosterStatusLabel = CreateWrappedText(
+        parent,
+        "Paste a semicolon-separated roster and click Preview.",
+        previewButton.widget,
+        -12,
+        FULL_CONTENT_WIDTH,
+        0.8,
+        0.8,
+        1
+    )
 
     local previewHeader = CreateSectionLabel(parent, rosterStatusLabel, "Preview", -12)
 
@@ -478,12 +513,91 @@ local function BuildVersionsTab(framework, parent)
     parent:RefreshOptions()
 end
 
+local function SetMultiboxStatus(text, r, g, b)
+    if not multiboxStatusLabel then
+        return
+    end
+
+    UpdateWrappedLabel(multiboxStatusLabel, text or "", FULL_CONTENT_WIDTH)
+    multiboxStatusLabel:SetTextColor(r or 0.85, g or 0.85, b or 0.85, 1)
+end
+
+local function BuildMultiboxStatusText()
+    local team = AP.Team
+    if not team or not team:IsEnabled() then
+        return "Multiboxing Team is disabled."
+    end
+
+    local lines = {}
+
+    if team:GetIsMain() then
+        lines[#lines + 1] = "This box is the main."
+    end
+
+    local followTarget = team.GetFollowTarget and team:GetFollowTarget()
+    if followTarget then
+        lines[#lines + 1] = "Follow target: " .. followTarget
+    else
+        lines[#lines + 1] = "Follow target: none (not in a group)"
+    end
+
+    if team.HasMultiMainConflict and team:HasMultiMainConflict() then
+        lines[#lines + 1] =
+            "WARNING: More than one box claims to be the main! Check 'This box is the main' on exactly one client."
+        return table.concat(lines, "\n"), 1, 0.3, 0.2
+    end
+
+    return table.concat(lines, "\n"), 0.8, 0.8, 1
+end
+
+local function BuildMultiboxTab(framework, parent)
+    multiboxTab = parent
+
+    local anchor = CreateBodyAnchor(parent)
+
+    -- Body anchor sits at -90 from the tab top; the status label goes right
+    -- below it and the menu must start clear of the (up to 3 line) label.
+    multiboxStatusLabel = CreateWrappedText(parent, "", anchor, 0, FULL_CONTENT_WIDTH, 0.8, 0.8, 1)
+
+    CreateWrappedText(
+        parent,
+        "/apteam mounts (or /apteam dismount) the whole team. Followers follow the main with the "
+            .. "APFollow macro that this feature keeps pointed at the main automatically; bind a key "
+            .. "to it on each follower. Without a main, followers fall back to the group leader.",
+        anchor,
+        -170,
+        FULL_CONTENT_WIDTH,
+        0.85,
+        0.85,
+        0.85
+    )
+
+    local function RefreshMultiboxOptions()
+        local text, r, g, b = BuildMultiboxStatusText()
+        SetMultiboxStatus(text, r, g, b)
+
+        parent.RefreshOptions = function()
+            AP:RefreshMultiboxTab()
+        end
+
+        if AP.SettingsDFRenderer and AP.SettingsRegistry then
+            AP.SettingsDFRenderer:BuildMenu(parent, framework, {
+                xOffset = 20,
+                yOffset = -160,
+                height = parent:GetHeight() - 60,
+            }, AP.SettingsRegistry:GetMultiboxItems())
+        end
+    end
+
+    parent.RefreshOptions = RefreshMultiboxOptions
+    parent:RefreshOptions()
+end
+
 local function BuildSettingsTab(framework, parent)
     settingsTab = parent
 
     local function RefreshSettingsOptions()
-        parent.RefreshOptions = settingsTabRefreshBase or function()
-        end
+        parent.RefreshOptions = settingsTabRefreshBase or function() end
 
         local menuYOffset = BODY_TOP_OFFSET - 16
 
@@ -543,6 +657,7 @@ local function BuildMainWindow()
 
     BuildRosterTab(framework, mainTabs:GetTabFrameByName("Roster"))
     BuildVersionsTab(framework, mainTabs:GetTabFrameByName("Versions"))
+    BuildMultiboxTab(framework, mainTabs:GetTabFrameByName("Multibox"))
     BuildSettingsTab(framework, mainTabs:GetTabFrameByName("Settings"))
 
     if mainTabs.SelectTabByName then
@@ -591,6 +706,12 @@ function AP:RefreshSettingsTab()
     end
 end
 
+function AP:RefreshMultiboxTab()
+    if multiboxTab and multiboxTab.RefreshOptions then
+        multiboxTab:RefreshOptions()
+    end
+end
+
 function AP:RefreshVersionsTab()
     if not versionsTab or not versionsResultsScrollBox then
         return
@@ -610,4 +731,3 @@ function AP:RefreshVersionsTab()
         versionsResultsScrollBox:Refresh()
     end
 end
-

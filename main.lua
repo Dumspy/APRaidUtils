@@ -34,6 +34,10 @@ local function EnsureSavedVariables()
     if type(APRaidUtilsDB.profile.readycheck) ~= "table" then
         APRaidUtilsDB.profile.readycheck = {}
     end
+
+    if type(APRaidUtilsDB.profile.team) ~= "table" then
+        APRaidUtilsDB.profile.team = {}
+    end
 end
 
 local function InitializeSavedVariables()
@@ -82,6 +86,10 @@ function AP:OnPlayerLogin()
         self.ReadyCheck:Restore()
     end
 
+    if self.Team and self.Team.Restore then
+        self.Team:Restore()
+    end
+
     if IsInGuild() and not IsDevVersion then
         local myVersion = C_AddOns.GetAddOnMetadata("APRaidUtils", "Version")
         if AP.Comms then
@@ -99,6 +107,10 @@ end
 function AP:NotifyOptionsChanged()
     if self.RefreshSettingsTab then
         self:RefreshSettingsTab()
+    end
+
+    if self.RefreshMultiboxTab then
+        self:RefreshMultiboxTab()
     end
 end
 
